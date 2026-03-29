@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # --- Motor Relacional (PostgreSQL) ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: wepay_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin_wepay
+      POSTGRES_PASSWORD: superpassword123 # Cambia esto por algo seguro en producción
+      POSTGRES_DB: wepay_menu # Esta es la primera DB que se crea por defecto
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persistencia de datos (para no perder la info si apagamos el contenedor)
+      - pgdata:/var/lib/postgresql/data
+      # Montamos el script para crear las otras 3 bases de datos lógicas
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+
+  # --- Motor en Memoria (Redis) ---
+  # Ideal para manejar la latencia casi nula de los WebSockets en las mesas
+  redis:
+    image: redis:7-alpine
+    container_name: wepay_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+# Declaración de los volúmenes para que los datos sobrevivan a reinicios
+volumes:
+  pgdata:
+  redisdata:
