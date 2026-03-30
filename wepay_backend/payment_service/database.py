@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 # URL de conexión apuntando a la cuarta base de datos lógica: 'wepay_pagos'
 # Usamos 127.0.0.1 para asegurar la compatibilidad en Windows con Docker
-SQLALCHEMY_DATABASE_URL = "postgresql://admin_wetab:superpassword123@127.0.0.1:5432/wepay_pagos"
+SQLALCHEMY_DATABASE_URL = "postgresql://admin_wepay:superpassword123@127.0.0.1:5432/wepay_pagos"
 
 # 1. Crear el motor de conexión
 engine = create_engine(SQLALCHEMY_DATABASE_URL)

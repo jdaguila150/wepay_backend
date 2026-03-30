@@ -1,9 +1,18 @@
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 app = FastAPI(title="WePay API Gateway")
 
-# Definimos dónde vive cada microservicio internamente
+# --- CONFIGURACIÓN DE CORS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"], # Permite a tu app de React conectarse
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 SERVICES = {
     "menu": "http://localhost:8000",
     "auth": "http://localhost:8001",
