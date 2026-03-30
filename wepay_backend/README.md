@@ -13,7 +13,7 @@
 
 ### 1. Clonar el repositorio
 
-git clone [https://github.com/TU_USUARIO/wepay_backend.git](https://github.com/TU_USUARIO/wepay_backend.git)
+git clone [https://github.com/jdaguila150/wepay_backend.git](https://github.com/jdaguila150/wepay_backend.git)
 cd wepay_backend
 
 2. Levantar la Infraestructura (Docker)
@@ -49,3 +49,7 @@ uvicorn main:app --reload
 
 Una vez encendido el servidor, puedes probar todos los endpoints (Crear, Ver, Editar y Borrar restaurantes o platillos) en:
 👉 http://localhost:8000/docs
+
+
+uvicorn main:app --reload --port 8001
+-Para correrlo en un puerto diferente
