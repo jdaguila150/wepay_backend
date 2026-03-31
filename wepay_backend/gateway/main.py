@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
@@ -44,6 +44,11 @@ async def gateway(service: str, path: str, request: Request):
                 headers=dict(request.headers)
             )
             
-            return response.json()
+            # Devolvemos un objeto Response copiando el status_code y el contenido del microservicio
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                media_type=response.headers.get("content-type", "application/json")
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error conectando con {service}: {str(e)}")

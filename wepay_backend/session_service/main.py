@@ -76,3 +76,14 @@ def ver_estado_mesa(sesion_id: uuid.UUID):
     if not estado:
         raise HTTPException(status_code=404, detail="Sesión no encontrada en caché")
     return estado
+
+
+@app.get("/sesion/{sesion_id}", response_model=schemas.SesionMesaResponse)
+def obtener_sesion_base(sesion_id: uuid.UUID, db: Session = Depends(get_db)):
+    # Buscamos la sesión en PostgreSQL para devolver a qué restaurante pertenece
+    sesion = db.query(models.SesionMesa).filter(models.SesionMesa.id == sesion_id).first()
+    
+    if not sesion:
+        raise HTTPException(status_code=404, detail="La mesa solicitada no existe")
+        
+    return sesion

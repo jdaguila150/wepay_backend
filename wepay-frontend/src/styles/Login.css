@@ -1,0 +1,170 @@
+/* Variables base extraídas de tu imagen, actualizadas para un tono premium */
+:root {
+  --wepay-orange: #F37A20; /* Tu naranja vibrante */
+  --wepay-orange-hover: #e06915;
+  --text-dark: #2c3e50;
+  --text-light: #6c757d;
+  --bg-form: rgba(255, 255, 255, 0.95); /* Blanco translúcido para la tarjeta */
+  --font-main: 'Poppins', 'Segoe UI', Roboto, sans-serif; /* Tipografía Startup */
+}
+
+.family-login-wrapper {
+  /* Fondo Naranja Premium con patrón sutil de ondas (inspirado en la 'W' de tu logo) */
+  background-color: var(--wepay-orange);
+  background-image: linear-gradient(135deg, rgba(243,122,32,1) 0%, rgba(255,140,0,1) 100%),
+                    url("data:image/svg+xml,%3Csvg width='52' height='26' viewBox='0 0 52 26' xmlns='http://www.wepay.com/svg'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Cpath d='M10 10c0-2.21-1.79-4-4-4-2.21 0-4 1.79-4 4s1.79 4 4 4c2.21 0 4-1.79 4-4zm10 0c0-2.21-1.79-4-4-4-2.21 0-4 1.79-4 4s1.79 4 4 4c2.21 0 4-1.79 4-4zm10 0c0-2.21-1.79-4-4-4-2.21 0-4 1.79-4 4s1.79 4 4 4c2.21 0 4-1.79 4-4zm10 0c0-2.21-1.79-4-4-4-2.21 0-4 1.79-4 4s1.79 4 4 4c2.21 0 4-1.79 4-4z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-size: cover;
+  font-family: var(--font-main);
+
+
+  min-height: 100vh; 
+  width: 100vw; 
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Estilos de la tarjeta de Login flotante */
+.family-login-card {
+  background-color: var(--bg-form) !important;
+  /* Efecto de desenfoque de fondo */
+  backdrop-filter: blur(10px); 
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transform: translateY(20px);
+  animation: cardFadeIn 0.6s ease-out forwards;
+}
+
+@keyframes cardFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Logo moderno: WE PAY */
+.family-logo-text-modern {
+  color: #333;
+  font-size: 3rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -3px;
+}
+
+.family-orange-dot {
+  color: var(--wepay-orange);
+}
+
+.family-brand-tagline {
+  font-size: 1rem;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+/* Alerta de Error estilizada */
+.family-alert {
+  border: none;
+  font-size: 0.9rem;
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.family-icon-alert {
+  font-size: 1.2rem;
+}
+
+/* Estilos de los inputs con Bootstrap */
+.family-form-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #444;
+  font-size: 0.95rem;
+}
+
+.family-label-icon {
+  font-size: 1rem;
+  color: var(--wepay-orange);
+}
+
+/* Contenedor del Input Group */
+.family-input-group-modern {
+  border-radius: 50px; /* Bordes extra redondeados */
+  overflow: hidden; /* Para que el input siga la forma */
+  border: 2px solid #e1e1e1;
+  transition: border-color 0.3s ease;
+}
+
+.family-input-group-modern:focus-within {
+  border-color: var(--wepay-orange);
+}
+
+/* El input real */
+.family-form-control {
+  border: none !important;
+  background-color: transparent !important;
+  font-size: 1rem;
+  padding-left: 1.5rem !important;
+  box-shadow: none !important;
+}
+
+.family-form-control:focus {
+  background-color: transparent !important;
+  color: #333;
+}
+
+/* Botón de ver clave */
+.family-password-toggle {
+  background-color: transparent !important;
+  color: #777 !important;
+}
+
+.family-password-toggle:hover {
+  color: var(--wepay-orange) !important;
+}
+
+.family-icon-toggle {
+  font-size: 1.2rem;
+}
+
+/* Botón Primary Naranja Premium */
+.family-btn-primary {
+  background-color: var(--wepay-orange);
+  color: white;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  border: none;
+  box-shadow: 0 4px 15px rgba(243, 122, 32, 0.3);
+}
+
+.family-btn-primary:hover:not(:disabled) {
+  background-color: var(--wepay-orange-hover);
+  color: white;
+  transform: translateY(-2px); /* Pequeña elevación al hacer hover */
+}
+
+.family-btn-primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.family-btn-primary:disabled {
+  background-color: #fca05b;
+  box-shadow: none;
+}
+
+/* Footer y Links */
+.family-form-footer a {
+  color: var(--wepay-orange);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.family-form-footer a:hover {
+  color: var(--wepay-orange-hover);
+  text-decoration: underline;
+}

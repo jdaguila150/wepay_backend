@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
 import uuid
+import schemas
 
 # Importamos lo que creamos en los otros archivos
 from database import engine, get_db
@@ -19,30 +20,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# --- ESQUEMAS PYDANTIC (Validación de datos de entrada/salida) ---
-
-# Esquema para cuando el usuario QUIERE CREAR un restaurante
-class RestauranteCreate(BaseModel):
-    nombre: str
-    direccion: str
-    telefono: str
-
-# Esquema para cuando nosotros le RESPONDEMOS al usuario
-class RestauranteResponse(BaseModel):
-    id: uuid.UUID
-    nombre: str
-    direccion: str
-    telefono: str
-
-    # Esto le dice a Pydantic que lea los datos de un modelo SQLAlchemy
-    class Config:
-        orm_mode = True 
-        # Nota: Si usas Pydantic v2 (lo más probable), cambia 'orm_mode = True' por 'from_attributes = True'
-
 # --- ENDPOINTS (Las puertas de nuestra API) ---
 
-@app.post("/restaurantes/", response_model=RestauranteResponse)
-def crear_restaurante(restaurante: RestauranteCreate, db: Session = Depends(get_db)):
+@app.post("/restaurantes/", response_model=schemas.RestauranteResponse)
+def crear_restaurante(restaurante: schemas.RestauranteCreate, db: Session = Depends(get_db)):
     # Creamos la instancia del modelo SQLAlchemy
     nuevo_restaurante = models.Restaurante(
         nombre=restaurante.nombre,
@@ -56,74 +37,61 @@ def crear_restaurante(restaurante: RestauranteCreate, db: Session = Depends(get_
     
     return nuevo_restaurante
 
-@app.get("/restaurantes/", response_model=List[RestauranteResponse])
+@app.get("/restaurantes/", response_model=List[schemas.RestauranteResponse])
 def obtener_restaurantes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     # Consultamos la base de datos con un límite para no saturar si hay miles
     restaurantes = db.query(models.Restaurante).offset(skip).limit(limit).all()
     return restaurantes
 
-# --- ESQUEMAS PARA CATEGORÍAS ---
-class CategoriaCreate(BaseModel):
-    nombre: str
-    descripcion: str | None = None
-    restaurante_id: uuid.UUID
 
-class CategoriaResponse(BaseModel):
-    id: uuid.UUID
-    nombre: str
-    descripcion: str | None = None
-    restaurante_id: uuid.UUID
+@app.patch("/categorias/{categoria_id}", response_model=schemas.CategoriaResponse)
+def actualizar_categoria(categoria_id: uuid.UUID, categoria_data: schemas.CategoriaUpdate, db: Session = Depends(get_db)):
+    db_categoria = db.query(models.CategoriaMenu).filter(models.CategoriaMenu.id == categoria_id).first()
+    if not db_categoria:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    
+    datos_actualizar = categoria_data.dict(exclude_unset=True)
+    for key, value in datos_actualizar.items():
+        setattr(db_categoria, key, value)
+    
+    db.commit()
+    db.refresh(db_categoria)
+    return db_categoria
 
-    class Config:
-        from_attributes = True
-
-# --- ESQUEMAS PARA ÍTEMS (PLATILLOS) ---
-class ItemCreate(BaseModel):
-    nombre: str
-    descripcion: str | None = None
-    precio: float
-    categoria_id: uuid.UUID
-
-class ItemResponse(BaseModel):
-    id: uuid.UUID
-    nombre: str
-    precio: float
-    disponible: bool
-    categoria_id: uuid.UUID
-
-    class Config:
-        from_attributes = True
+@app.delete("/categorias/{categoria_id}")
+def borrar_categoria(categoria_id: uuid.UUID, db: Session = Depends(get_db)):
+    db_categoria = db.query(models.CategoriaMenu).filter(models.CategoriaMenu.id == categoria_id).first()
+    if not db_categoria:
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    
+    db.delete(db_categoria)
+    db.commit()
+    return {"message": "Categoría eliminada correctamente"}
 
 # --- ENDPOINTS DE CATEGORÍAS ---
-@app.post("/categorias/", response_model=CategoriaResponse)
-def crear_categoria(categoria: CategoriaCreate, db: Session = Depends(get_db)):
+@app.post("/categorias/", response_model=schemas.CategoriaResponse)
+def crear_categoria(categoria: schemas.CategoriaCreate, db: Session = Depends(get_db)):
     nueva_cat = models.CategoriaMenu(**categoria.dict())
     db.add(nueva_cat)
     db.commit()
     db.refresh(nueva_cat)
     return nueva_cat
 
-@app.get("/restaurantes/{restaurante_id}/menu", response_model=List[CategoriaResponse])
+@app.get("/restaurantes/{restaurante_id}/menu", response_model=List[schemas.CategoriaResponse])
 def obtener_categorias_por_restaurante(restaurante_id: uuid.UUID, db: Session = Depends(get_db)):
     return db.query(models.CategoriaMenu).filter(models.CategoriaMenu.restaurante_id == restaurante_id).all()
 
 # --- ENDPOINTS DE ÍTEMS ---
-@app.post("/items/", response_model=ItemResponse)
-def crear_item(item: ItemCreate, db: Session = Depends(get_db)):
+@app.post("/items/", response_model=schemas.ItemResponse)
+def crear_item(item: schemas.ItemCreate, db: Session = Depends(get_db)):
     nuevo_item = models.ItemMenu(**item.dict())
     db.add(nuevo_item)
     db.commit()
     db.refresh(nuevo_item)
     return nuevo_item
 
-class MenuCompletoResponse(RestauranteResponse):
-    categorias: List[CategoriaResponse] = []
 
-    class Config:
-        from_attributes = True
-
-
-@app.get("/restaurantes/{restaurante_id}/full-menu", response_model=MenuCompletoResponse)
+@app.get("/restaurantes/{restaurante_id}/full-menu", response_model=schemas.MenuCompletoResponse)
 def obtener_todo_el_menu(restaurante_id: uuid.UUID, db: Session = Depends(get_db)):
     restaurante = db.query(models.Restaurante).filter(models.Restaurante.id == restaurante_id).first()
     if not restaurante:
@@ -131,24 +99,10 @@ def obtener_todo_el_menu(restaurante_id: uuid.UUID, db: Session = Depends(get_db
     return restaurante
 
 
-# Esquema para actualizar un restaurante (todos los campos son opcionales)
-class RestauranteUpdate(BaseModel):
-    nombre: Optional[str] = None
-    direccion: Optional[str] = None
-    telefono: Optional[str] = None
-
-# Esquema para actualizar un ítem (ej: corregir el precio)
-class ItemUpdate(BaseModel):
-    nombre: Optional[str] = None
-    descripcion: Optional[str] = None
-    precio: Optional[float] = None
-    disponible: Optional[bool] = None
-
-
 # --- ACTUALIZAR Y BORRAR RESTAURANTE ---
 
-@app.patch("/restaurantes/{restaurante_id}", response_model=RestauranteResponse)
-def actualizar_restaurante(restaurante_id: uuid.UUID, restaurante_data: RestauranteUpdate, db: Session = Depends(get_db)):
+@app.patch("/restaurantes/{restaurante_id}", response_model=schemas.RestauranteResponse)
+def actualizar_restaurante(restaurante_id: uuid.UUID, restaurante_data: schemas.RestauranteUpdate, db: Session = Depends(get_db)):
     db_restaurante = db.query(models.Restaurante).filter(models.Restaurante.id == restaurante_id).first()
     if not db_restaurante:
         raise HTTPException(status_code=404, detail="Restaurante no encontrado")
@@ -174,8 +128,8 @@ def borrar_restaurante(restaurante_id: uuid.UUID, db: Session = Depends(get_db))
 
 # --- ACTUALIZAR PRECIO O DISPONIBILIDAD DE ÍTEM ---
 
-@app.patch("/items/{item_id}", response_model=ItemResponse)
-def actualizar_item(item_id: uuid.UUID, item_data: ItemUpdate, db: Session = Depends(get_db)):
+@app.patch("/items/{item_id}", response_model=schemas.ItemResponse)
+def actualizar_item(item_id: uuid.UUID, item_data: schemas.ItemUpdate, db: Session = Depends(get_db)):
     db_item = db.query(models.ItemMenu).filter(models.ItemMenu.id == item_id).first()
     if not db_item:
         raise HTTPException(status_code=404, detail="Platillo no encontrado")
@@ -187,3 +141,20 @@ def actualizar_item(item_id: uuid.UUID, item_data: ItemUpdate, db: Session = Dep
     db.commit()
     db.refresh(db_item)
     return db_item
+
+
+@app.get("/restaurantes/{restaurante_id}/items", response_model=List[schemas.ItemResponse])
+def obtener_items_por_restaurante(restaurante_id: uuid.UUID, db: Session = Depends(get_db)):
+    # Hacemos un JOIN con CategoriaMenu para poder filtrar los platillos por el ID del restaurante
+    items = db.query(models.ItemMenu).join(models.CategoriaMenu).filter(models.CategoriaMenu.restaurante_id == restaurante_id).all()
+    return items
+
+@app.delete("/items/{item_id}")
+def borrar_item(item_id: uuid.UUID, db: Session = Depends(get_db)):
+    db_item = db.query(models.ItemMenu).filter(models.ItemMenu.id == item_id).first()
+    if not db_item:
+        raise HTTPException(status_code=404, detail="Platillo no encontrado")
+    
+    db.delete(db_item)
+    db.commit()
+    return {"message": "Platillo eliminado correctamente"}

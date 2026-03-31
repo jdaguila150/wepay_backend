@@ -46,4 +46,4 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     
     # 3. Generar el Token JWT de WePay
     access_token = auth_utils.crear_token_acceso(data={"sub": usuario.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "user_id": usuario.id}
