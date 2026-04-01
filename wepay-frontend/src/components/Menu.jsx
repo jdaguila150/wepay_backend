@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import api from '../../services/api'
+
 
 export default function Menu() {
     const [restaurantes, setRestaurantes] = useState([]);
@@ -23,7 +25,9 @@ export default function Menu() {
 
         const cargarRestaurantes = async () => {
             try {
-                const response = await axios.get('http://localhost:8080/menu/restaurantes/', {
+                const response = await api.get('/menu/restaurantes/', {
+                // const response = await axios.get('http://192.168.100.26:8080/menu/restaurantes/', {
+                // const response = await axios.get('http://localhost:8080/menu/restaurantes/', {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setRestaurantes(response.data);
@@ -50,8 +54,9 @@ export default function Menu() {
         try {
             const token = localStorage.getItem('wepay_token');
 
-            const response = await axios.post('http://localhost:8080/sesiones/sesion/abrir', {
-                restaurante_id: restauranteSeleccionado.id,
+            const response = await api.post('/sesiones/sesion/abrir', {
+            // const response = await axios.post('http://localhost:8080/sesiones/sesion/abrir', {
+            restaurante_id: restauranteSeleccionado.id,
                 numero_mesa: numeroMesa
             }, {
                 headers: { Authorization: `Bearer ${token}` }

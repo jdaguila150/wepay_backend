@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jwtDecode } from "jwt-decode";
 import axios from 'axios';
+import {QRCode} from "react-qr-code";
+import api from '../../services/api'
+
 
 export default function Mesa() {
     const { id } = useParams();
@@ -15,31 +18,44 @@ export default function Mesa() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [pedidoEnCurso, setPedidoEnCurso] = useState(null);
+    const [cantidades, setCantidades] = useState({});
+
+    const [mostrarQR, setMostrarQR] = useState(false);
 
     useEffect(() => {
         const token = localStorage.getItem('wepay_token');
         if (!token) {
-            navigate('/login');
-            return;
+            const rutaActual = window.location.pathname;
+            // Solo guardamos el destino si la ruta actual contiene la palabra "mesa"
+            if (rutaActual.includes('/mesa')) {
+                localStorage.setItem('wepay_redirect', rutaActual);
+            }
+            return navigate('/login');
         }
 
         const cargarDatosMesa = async () => {
             try {
                 // 1. Consultar detalles de la sesión
-                const resSesion = await axios.get(`http://localhost:8080/sesiones/sesion/${id}`, {
+                const resSesion = await api.get(`/sesiones/sesion/${id}`, {
+                // const resSesion = await axios.get(`http://192.168.100.26:8080/sesiones/sesion/${id}`, {
+                // const resSesion = await axios.get(`http://localhost:8080/sesiones/sesion/${id}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const datosSesion = resSesion.data;
                 setSesion(datosSesion);
 
                 // 2. Traer las CATEGORÍAS de este restaurante
-                const resCat = await axios.get(`http://localhost:8080/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
+                const resCat = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
+                // const resCat = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
+                // const resCat = await axios.get(`http://localhost:8080/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setCategorias(resCat.data);
 
                 // 3. Traer los PLATILLOS
-                const resMenu = await axios.get(`http://localhost:8080/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
+                const resMenu = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
+                // const resMenu = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
+                // const resMenu = await axios.get(`http://localhost:8080/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setMenuItems(resMenu.data);
@@ -57,28 +73,22 @@ export default function Mesa() {
 
     const agregarALaCuenta = async (item) => {
         setPedidoEnCurso(item.id);
+        const cantidadAPedir = getCantidad(item.id);
         try {
             const token = localStorage.getItem('wepay_user_id');
-            
-            // 2. ¡Abrimos el token para sacar el ID!
-            // const decodedToken = jwtDecode(token);
-            
-            // console.log("DECODE TOKEN", decodedToken);
 
-            // Normalmente FastAPI guarda el ID en 'sub' o en 'id'. 
-            // Revisa qué nombre le pusiste en tu backend al crear el token.
-            // const miUsuarioId = decodedToken.sub || decodedToken.id;
-
-            // 3. Lo mandamos en la petición real
-            await axios.post(`http://localhost:8080/sesiones/sesion/${id}/pedir`, {
-                usuario_id: token,  // <-- ¡Adiós al UUID falso!
+            await api.post(`/sesiones/sesion/${id}/pedir`, {
+            // await axios.post(`http://192.168.100.26:8080/sesiones/sesion/${id}/pedir`, {
+            // await axios.post(`http://localhost:8080/sesiones/sesion/${id}/pedir`, {
+                usuario_id: token,
                 item_menu_id: item.id,
-                cantidad: 1
+                cantidad: cantidadAPedir
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            alert(`¡${item.nombre} agregado a la cuenta!`);
+            setCantidades(prev => ({ ...prev, [item.id]: 1 }));
+
         } catch (err) {
             alert('Error al agregar el producto. Intenta de nuevo.');
         } finally {
@@ -104,6 +114,16 @@ export default function Mesa() {
         ? itemsDisponibles
         : itemsDisponibles.filter(item => item.categoria_id === categoriaActiva);
 
+
+    const cambiarCantidad = (itemId, delta) => {
+        setCantidades(prev => {
+            const actual = prev[itemId] || 1;
+            const nueva = Math.max(1, actual + delta); // Evitamos que baje de 1
+            return { ...prev, [itemId]: nueva };
+        });
+    };
+
+    const getCantidad = (itemId) => cantidades[itemId] || 1;
     return (
         <div className="min-vh-100 bg-light pb-5">
             {/* Navbar */}
@@ -115,14 +135,25 @@ export default function Mesa() {
                         </button>
                         <div>
                             <h5 className="m-0 fw-bold">Mesa {sesion?.numero_mesa}</h5>
-                            <small className="opacity-75">ID: {id.substring(0, 8)}...</small>
+                            <small className="opacity-75">Comensales unidos</small>
                         </div>
                     </div>
 
-                    <button className="btn btn-dark rounded-pill px-3 fw-bold shadow-sm d-flex align-items-center gap-2">
-                        <span className="material-icons fs-5">shopping_cart</span>
-                        <span>Ver Cuenta</span>
-                    </button>
+                    <div className="d-flex gap-2">
+                        {/* BOTÓN NUEVO: Invitar Amigos */}
+                        <button
+                            onClick={() => setMostrarQR(true)}
+                            className="btn btn-light rounded-pill px-3 fw-bold shadow-sm d-flex align-items-center gap-1 text-dark"
+                        >
+                            <span className="material-icons fs-5">qr_code_scanner</span>
+                            <span className="d-none d-sm-inline">Invitar</span>
+                        </button>
+
+                        <button onClick={() => navigate(`/cuenta/${id}`)} className="btn btn-dark rounded-pill px-3 fw-bold shadow-sm d-flex align-items-center gap-2">
+                            <span className="material-icons fs-5">shopping_cart</span>
+                            <span className="d-none d-sm-inline">Ver Cuenta</span>
+                        </button>
+                    </div>
                 </div>
             </nav>
 
@@ -173,16 +204,43 @@ export default function Mesa() {
                                         <p className="text-muted small mb-2 text-truncate" style={{ maxWidth: '150px' }}>
                                             {item.descripcion || 'Sin descripción'}
                                         </p>
-                                        <div className="d-flex justify-content-between align-items-center">
-                                            <span className="fw-bold text-dark fs-5">${item.precio.toFixed(2)}</span>
-                                            <button
-                                                onClick={() => agregarALaCuenta(item)}
-                                                disabled={pedidoEnCurso === item.id}
-                                                className="btn btn-sm rounded-pill px-3 fw-bold text-white shadow-sm"
-                                                style={{ backgroundColor: '#F37A20' }}
-                                            >
-                                                {pedidoEnCurso === item.id ? '...' : '+ Agregar'}
-                                            </button>
+
+                                        <div className="d-flex flex-column gap-3 mt-2">
+                                            {/* Selector de Cantidad (Botones - y +) */}
+                                            <div className="d-flex align-items-center justify-content-center bg-light rounded-pill p-1 shadow-sm" style={{ width: 'fit-content' }}>
+                                                <button
+                                                    className="btn btn-sm btn-white rounded-circle shadow-sm d-flex align-items-center p-1 border-0"
+                                                    onClick={() => cambiarCantidad(item.id, -1)}
+                                                >
+                                                    <span className="material-icons fs-6 text-dark">remove</span>
+                                                </button>
+
+                                                <span className="px-3 fw-bold text-dark" style={{ minWidth: '35px', textAlign: 'center' }}>
+                                                    {getCantidad(item.id)}
+                                                </span>
+
+                                                <button
+                                                    className="btn btn-sm btn-white rounded-circle shadow-sm d-flex align-items-center p-1 border-0"
+                                                    onClick={() => cambiarCantidad(item.id, 1)}
+                                                >
+                                                    <span className="material-icons fs-6 text-dark">add</span>
+                                                </button>
+                                            </div>
+
+                                            {/* Fila del precio total y el botón de envío */}
+                                            <div className="d-flex justify-content-between align-items-center">
+                                                <span className="fw-bold text-dark fs-5">
+                                                    ${(item.precio * getCantidad(item.id)).toFixed(2)}
+                                                </span>
+                                                <button
+                                                    onClick={() => agregarALaCuenta(item)}
+                                                    disabled={pedidoEnCurso === item.id}
+                                                    className="btn btn-sm rounded-pill px-4 fw-bold text-white shadow-sm border-0"
+                                                    style={{ backgroundColor: '#F37A20' }}
+                                                >
+                                                    {pedidoEnCurso === item.id ? '...' : 'PEDIR'}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -192,13 +250,56 @@ export default function Mesa() {
                 </div>
             </main>
 
-            {/* Floating Action Button */}
+            {/* Floating Action Button para pagar*/}
             <div className="position-fixed bottom-0 end-0 p-4" style={{ zIndex: 1030 }}>
-                <button className="btn btn-lg rounded-pill shadow-lg text-white fw-bold px-4 d-flex align-items-center gap-2" style={{ backgroundColor: '#2c3e50' }}>
+                <button
+                    onClick={() => navigate(`/pagar/${id}`)}
+                    className="btn btn-lg rounded-pill shadow-lg text-white fw-bold px-4 d-flex align-items-center gap-2"
+                    style={{ backgroundColor: '#2c3e50', transition: 'transform 0.2s' }}
+                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                >
                     <span className="material-icons">payments</span>
                     CERRAR Y PAGAR
                 </button>
             </div>
+
+
+
+
+
+
+
+            {/* Modal para mostrar el QR */}
+            {mostrarQR && (
+                <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1050 }}>
+                    <div className="modal-dialog modal-dialog-centered">
+                        <div className="modal-content border-0 rounded-4 shadow-lg text-center p-4">
+                            <div className="d-flex justify-content-end">
+                                <button type="button" className="btn-close" onClick={() => setMostrarQR(false)}></button>
+                            </div>
+                            <h4 className="fw-bold mb-1" style={{ color: '#F37A20' }}>Mesa {sesion?.numero_mesa}</h4>
+                            <p className="text-muted small mb-4">¡Que tus amigos escaneen este código para unirse a la cuenta!</p>
+
+                            <div className="bg-white p-3 rounded-4 mx-auto shadow-sm" style={{ width: 'fit-content', border: '2px dashed #ccc' }}>
+                                {/* Aquí generamos el QR mágicamente con la URL actual */}
+                                <QRCode
+                                    value={window.location.href}
+                                    size={200}
+                                    fgColor="#2c3e50"
+                                />
+                            </div>
+
+                            <p className="mt-4 small text-muted">
+                                O comparte este enlace:<br />
+                                <code className="bg-light px-2 py-1 rounded user-select-all">
+                                    {window.location.href}
+                                </code>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

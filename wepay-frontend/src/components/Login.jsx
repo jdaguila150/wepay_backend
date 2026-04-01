@@ -2,6 +2,8 @@ import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import '../styles/Login.css';
+import api from '../../services/api'
+
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -22,17 +24,28 @@ export default function Login() {
         formData.append('password', password);
 
         try {
-            const response = await axios.post('http://localhost:8080/auth/login', formData, {
+            const response = await api.post('/auth/login', formData, {
+            // const response = await axios.post('http://192.168.100.26:8080/auth/login', formData, {
+            // const response = await axios.post('http://localhost:8080/auth/login', formData, {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             });
 
             // Si Axios no saltó al catch, significa que fue un 200 OK
-            
             localStorage.setItem('wepay_token', response.data.access_token);
             localStorage.setItem('wepay_user_id', response.data.user_id);
-            navigate('/menu');
+            
+            // --- NUEVA LÓGICA DE REDIRECCIÓN MÁGICA ---
+            const destinoPendiente = localStorage.getItem('wepay_redirect');
+           // Si hay un destino Y NO es la propia pantalla de login o la raíz
+            if (destinoPendiente && destinoPendiente !== '/login' && destinoPendiente !== '/') {
+                localStorage.removeItem('wepay_redirect'); 
+                navigate(destinoPendiente);
+            } else {
+                localStorage.removeItem('wepay_redirect'); // Limpiamos por si acaso
+                navigate('/menu');
+            }
 
         } catch (err) {
             // 1. El servidor respondió con un código de error (ej. 400, 401, 500)

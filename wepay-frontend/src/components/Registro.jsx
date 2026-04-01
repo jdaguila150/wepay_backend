@@ -2,6 +2,8 @@ import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import '../styles/Login.css';
+import api from '../../services/api'
+
 
 export default function Registro() {
     const [nombre, setNombre] = useState('');
@@ -36,7 +38,9 @@ export default function Registro() {
 
         try {
             // El registro suele enviarse como JSON estándar
-            await axios.post('http://localhost:8080/auth/registro', {
+            await api.post('/auth/registro', {
+            // await axios.post('http://192.168.100.26:8080/auth/registro', {
+            // await axios.post('http://localhost:8080/auth/registro', {
                 email: email,
                 password: password,
                 // Si tu backend pide nombre, lo mandamos. Si no, lo ignorará.

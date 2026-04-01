@@ -7,7 +7,8 @@ app = FastAPI(title="WePay API Gateway")
 # --- CONFIGURACIÓN DE CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"], # Permite a tu app de React conectarse
+    allow_origins=["http://localhost:5173",          # Para cuando desarrollas en tu PC
+        "http://192.168.100.26:5173"], # Permite a tu app de React conectarse
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
