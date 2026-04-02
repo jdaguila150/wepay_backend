@@ -14,7 +14,7 @@ export default function Cuenta() {
     
     const miUsuarioId = localStorage.getItem('wepay_user_id');
 
-    useEffect(() => {
+   useEffect(() => {
         const token = localStorage.getItem('wepay_token');
         if (!token) {
             navigate('/login');
@@ -73,7 +73,33 @@ export default function Cuenta() {
             }
         };
 
+        // Carga inicial al abrir la pantalla
         cargarCuenta();
+
+        // // --- 🚀 MAGIA MULTIJUGADOR: WEBSOCKETS EN LA CUENTA 🚀 ---
+        
+        // // Abrimos el túnel directo al microservicio de Sesiones (Puerto 8002)
+        // const socket = new WebSocket(`ws://192.168.100.26:8002/ws/sesion/${id}`);
+
+        // socket.onopen = () => {
+        //     console.log("🟢 Cuenta conectada en vivo a WePay");
+        // };
+
+        // socket.onmessage = (event) => {
+        //     if (event.data === "actualizar_mesa") {
+        //         console.log("¡Alguien pidió algo! Recargando las matemáticas de la cuenta... 🧮🚀");
+                
+        //         // Ejecutamos tu función para descargar la cuenta fresca y hacer el cruce de nuevo
+        //         cargarCuenta(); 
+        //     }
+        // };
+
+        // // Limpieza al salir de la pantalla de la cuenta
+        // return () => {
+        //     socket.close();
+        //     console.log("🔴 Cuenta desconectada");
+        // };
+
     }, [id, navigate]);
 
     if (loading) {

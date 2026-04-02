@@ -107,9 +107,9 @@ def agregar_item_a_cuenta(
         })
         redis_client.actualizar_estado_mesa(str(sesion_id), estado_actual)
 
-    # 4. ¡LA MAGIA MULTIJUGADOR! 
-    # Le gritamos a todos los celulares de la mesa que recarguen sus platillos
-    background_tasks.add_task(manager.broadcast, "actualizar_mesa", str(sesion_id))
+    # # 4. ¡LA MAGIA MULTIJUGADOR! 
+    # # Le gritamos a todos los celulares de la mesa que recarguen sus platillos
+    # background_tasks.add_task(manager.broadcast, "actualizar_mesa", str(sesion_id))
 
     return nueva_orden
 

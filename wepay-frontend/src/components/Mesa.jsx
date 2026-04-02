@@ -63,6 +63,8 @@ export default function Mesa() {
         };
 
         cargarDatosMesa();
+
+        
     }, [id, navigate]);
 
     const agregarALaCuenta = async (item) => {
