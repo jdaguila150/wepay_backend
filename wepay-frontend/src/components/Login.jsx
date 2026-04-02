@@ -25,8 +25,6 @@ export default function Login() {
 
         try {
             const response = await api.post('/auth/login', formData, {
-            // const response = await axios.post('http://192.168.100.26:8080/auth/login', formData, {
-            // const response = await axios.post('http://localhost:8080/auth/login', formData, {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }

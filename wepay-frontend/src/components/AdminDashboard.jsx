@@ -41,8 +41,6 @@ export default function AdminDashboard() {
         const token = localStorage.getItem('wepay_token');
         try {
             const res = await api.get('/menu/restaurantes/', {
-            // const res = await axios.get('http://192.168.100.26:8080/menu/restaurantes/', {
-            // const res = await axios.get('http://localhost:8080/menu/restaurantes/', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setRestaurantes(res.data);
@@ -55,8 +53,6 @@ export default function AdminDashboard() {
         const token = localStorage.getItem('wepay_token');
         try {
             await api.post('/menu/restaurantes/', nuevoRest, {
-            // await axios.post('http://192.168.100.26:8080/menu/restaurantes/', nuevoRest, {
-            // await axios.post('http://localhost:8080/menu/restaurantes/', nuevoRest, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setNuevoRest({ nombre: '', direccion: '', telefono: '' });
@@ -73,12 +69,8 @@ export default function AdminDashboard() {
         // Cargar sus datos específicos
         try {
             const resCat = await api.get(`/menu/restaurantes/${rest.id}/menu`, { headers: { Authorization: `Bearer ${token}` } });
-            // const resCat = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${rest.id}/menu`, { headers: { Authorization: `Bearer ${token}` } });
-            // const resCat = await axios.get(`http://localhost:8080/menu/restaurantes/${rest.id}/menu`, { headers: { Authorization: `Bearer ${token}` } });
             setCategorias(resCat.data);
             const resProd = await api.get(`/menu/restaurantes/${rest.id}/items`, { headers: { Authorization: `Bearer ${token}` } });
-            // const resProd = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${rest.id}/items`, { headers: { Authorization: `Bearer ${token}` } });
-            // const resProd = await axios.get(`http://localhost:8080/menu/restaurantes/${rest.id}/items`, { headers: { Authorization: `Bearer ${token}` } });
             setProductos(resProd.data);
             
             // ¡NUEVO! Cargar las mesas de este restaurante
@@ -97,8 +89,6 @@ export default function AdminDashboard() {
         try {
             const token = localStorage.getItem('wepay_token');
             const res = await api.get(`/sesiones/restaurantes/${idRestaurante}/mesas-activas`, {
-            // const res = await axios.get(`http://192.168.100.26:8080/sesiones/restaurantes/${idRestaurante}/mesas-activas`, {
-            // const res = await axios.get(`http://localhost:8080/sesiones/restaurantes/${idRestaurante}/mesas-activas`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setMesasActivas(res.data);
@@ -116,8 +106,6 @@ export default function AdminDashboard() {
         try {
             const token = localStorage.getItem('wepay_token');
             await api.patch(`/sesiones/sesion/${sesionId}/forzar-cierre`, {}, {
-            // await axios.patch(`http://192.168.100.26:8080/sesiones/sesion/${sesionId}/forzar-cierre`, {}, {
-            // await axios.patch(`http://localhost:8080/sesiones/sesion/${sesionId}/forzar-cierre`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             
@@ -133,8 +121,6 @@ export default function AdminDashboard() {
         const token = localStorage.getItem('wepay_token');
         const nuevoEstado = !producto.disponible;
         await api.patch(`/menu/items/${producto.id}`, { disponible: nuevoEstado }, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.patch(`http://192.168.100.26:8080/menu/items/${producto.id}`, { disponible: nuevoEstado }, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.patch(`http://localhost:8080/menu/items/${producto.id}`, { disponible: nuevoEstado }, { headers: { Authorization: `Bearer ${token}` } });
         setProductos(productos.map(p => p.id === producto.id ? { ...p, disponible: nuevoEstado } : p));
     };
 
@@ -142,8 +128,6 @@ export default function AdminDashboard() {
         e.preventDefault();
         const token = localStorage.getItem('wepay_token');
         await api.post('/menu/categorias/', { nombre: nuevaCategoria, restaurante_id: restauranteSeleccionado.id }, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.post('http://192.168.100.26:8080/menu/categorias/', { nombre: nuevaCategoria, restaurante_id: restauranteSeleccionado.id }, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.post('http://localhost:8080/menu/categorias/', { nombre: nuevaCategoria, restaurante_id: restauranteSeleccionado.id }, { headers: { Authorization: `Bearer ${token}` } });
         setNuevaCategoria('');
         entrarARestaurante(restauranteSeleccionado);
     };
@@ -152,8 +136,6 @@ export default function AdminDashboard() {
         e.preventDefault();
         const token = localStorage.getItem('wepay_token');
         await api.post('/menu/items/', { ...nuevoProducto, precio: parseFloat(nuevoProducto.precio), restaurante_id: restauranteSeleccionado.id }, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.post('http://192.168.100.26:8080/menu/items/', { ...nuevoProducto, precio: parseFloat(nuevoProducto.precio), restaurante_id: restauranteSeleccionado.id }, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.post('http://localhost:8080/menu/items/', { ...nuevoProducto, precio: parseFloat(nuevoProducto.precio), restaurante_id: restauranteSeleccionado.id }, { headers: { Authorization: `Bearer ${token}` } });
         setNuevoProducto({ nombre: '', descripcion: '', precio: '', categoria_id: '' });
         entrarARestaurante(restauranteSeleccionado);
     };
@@ -162,8 +144,6 @@ export default function AdminDashboard() {
         if (!window.confirm('¿Eliminar?')) return;
         const token = localStorage.getItem('wepay_token');
         await api.delete(`/menu/items/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.delete(`http://192.168.100.26:8080/menu/items/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-        // await axios.delete(`http://localhost:8080/menu/items/${id}`, { headers: { Authorization: `Bearer ${token}` } });
         entrarARestaurante(restauranteSeleccionado);
     };
 

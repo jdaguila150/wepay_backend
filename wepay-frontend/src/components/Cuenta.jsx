@@ -25,8 +25,6 @@ export default function Cuenta() {
             try {
                 // 1. Traer el estado en vivo desde Redis (Microservicio de Sesiones)
                 const resEstado = await api.get(`/sesiones/sesion/${id}/estado`, {
-                // const resEstado = await axios.get(`http://192.168.100.26:8080/sesiones/sesion/${id}/estado`, {
-                // const resEstado = await axios.get(`http://localhost:8080/sesiones/sesion/${id}/estado`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const estado = resEstado.data;
@@ -34,8 +32,6 @@ export default function Cuenta() {
 
                 // 2. Traer el menú para saber los nombres y precios reales
                 const resMenu = await api.get(`/menu/restaurantes/${estado.restaurante_id}/items`, {
-                // const resMenu = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${estado.restaurante_id}/items`, {
-                // const resMenu = await axios.get(`http://localhost:8080/menu/restaurantes/${estado.restaurante_id}/items`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const menu = resMenu.data;

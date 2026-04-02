@@ -15,10 +15,10 @@ app.add_middleware(
 )
 
 SERVICES = {
-    "menu": "http://localhost:8000",
-    "auth": "http://localhost:8001",
-    "sesiones": "http://localhost:8002",
-    "pagos": "http://localhost:8003"
+    "menu": "http://127.0.0.1:8000",
+    "auth": "http://127.0.0.1:8001",
+    "sesiones": "http://127.0.0.1:8002",
+    "pagos": "http://127.0.0.1:8003"
 }
 
 @app.api_route("/{service}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])

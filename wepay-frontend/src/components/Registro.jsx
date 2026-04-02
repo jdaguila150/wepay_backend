@@ -39,8 +39,6 @@ export default function Registro() {
         try {
             // El registro suele enviarse como JSON estándar
             await api.post('/auth/registro', {
-            // await axios.post('http://192.168.100.26:8080/auth/registro', {
-            // await axios.post('http://localhost:8080/auth/registro', {
                 email: email,
                 password: password,
                 // Si tu backend pide nombre, lo mandamos. Si no, lo ignorará.

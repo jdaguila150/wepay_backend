@@ -1,5 +1,15 @@
-# Iniciar todos los microservicios de WePay en ventanas nuevas
-Start-Process powershell "-NoExit", "-Command", "cd menu_service; .\venv\Scripts\activate; uvicorn main:app --port 8000"
-Start-Process powershell "-NoExit", "-Command", "cd auth_service; .\venv\Scripts\activate; uvicorn main:app --port 8001"
-Start-Process powershell "-NoExit", "-Command", "cd session_service; .\venv\Scripts\activate; uvicorn main:app --port 8002"
-Start-Process powershell "-NoExit", "-Command", "cd payment_service; .\venv\Scripts\activate; uvicorn main:app --port 8003"
+$services = @(
+    @{name="menu_service"; port=8000},
+    @{name="auth_service"; port=8001},
+    @{name="session_service"; port=8002},
+    @{name="payment_service"; port=8003}
+)
+
+foreach ($service in $services) {
+
+    Write-Host "Iniciando $($service.name) en puerto $($service.port)..."
+
+    $cmd = "cd $($service.name); .\venv\Scripts\activate; uvicorn main:app --port $($service.port) --reload"
+
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", $cmd
+}

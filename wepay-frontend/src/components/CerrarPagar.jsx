@@ -23,16 +23,12 @@ export default function CerrarPagar() {
             try {
                 // 1. Traemos el estado de la mesa
                 const resEstado = await api.get(`/sesiones/sesion/${id}/estado`, {
-                // const resEstado = await axios.get(`http://192.168.100.26:8080/sesiones/sesion/${id}/estado`, {
-                // const resEstado = await axios.get(`http://localhost:8080/sesiones/sesion/${id}/estado`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const estado = resEstado.data;
 
                 // 2. Traemos el menú para los precios
                 const resMenu = await api.get(`/menu/restaurantes/${estado.restaurante_id}/items`, {
-                // const resMenu = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${estado.restaurante_id}/items`, {
-                // const resMenu = await axios.get(`http://localhost:8080/menu/restaurantes/${estado.restaurante_id}/items`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const menu = resMenu.data;
@@ -76,8 +72,6 @@ export default function CerrarPagar() {
 
             // ¡Ruta actualizada hacia el microservicio de PAGOS!
             const res = await api.post(`/pagos/procesar`, {
-            // const res = await axios.post(`http://192.168.100.26:8080/pagos/procesar`, {
-            // const res = await axios.post(`http://localhost:8080/pagos/procesar`, {
                 sesion_id: id,             // Tu schema exige este campo
                 usuario_id: miUsuarioId,
                 monto: totalAPagar,

@@ -26,8 +26,6 @@ export default function Menu() {
         const cargarRestaurantes = async () => {
             try {
                 const response = await api.get('/menu/restaurantes/', {
-                // const response = await axios.get('http://192.168.100.26:8080/menu/restaurantes/', {
-                // const response = await axios.get('http://localhost:8080/menu/restaurantes/', {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setRestaurantes(response.data);

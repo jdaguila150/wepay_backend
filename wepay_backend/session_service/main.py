@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List
+from typing import Dict, List
 import uuid
 
 from database import engine, get_db
@@ -11,6 +11,44 @@ from pydantic import BaseModel
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="WePay - Gestión de Sesiones y Pedidos")
+
+
+# --- MANEJADOR DE WEBSOCKETS ---
+class ConnectionManager:
+    def __init__(self):
+        # Guardaremos las conexiones así: {"id_de_la_mesa": [celular1, celular2, ...]}
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, sesion_id: str):
+        await websocket.accept()
+        if sesion_id not in self.active_connections:
+            self.active_connections[sesion_id] = []
+        self.active_connections[sesion_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, sesion_id: str):
+        if sesion_id in self.active_connections:
+            self.active_connections[sesion_id].remove(websocket)
+            if not self.active_connections[sesion_id]:
+                del self.active_connections[sesion_id]
+
+    async def broadcast(self, message: str, sesion_id: str):
+        # Si hay celulares conectados a esta mesa, les mandamos el mensaje a todos
+        if sesion_id in self.active_connections:
+            for connection in self.active_connections[sesion_id]:
+                await connection.send_text(message)
+
+manager = ConnectionManager()
+
+@app.websocket("/ws/sesion/{sesion_id}")
+async def websocket_mesa(websocket: WebSocket, sesion_id: str):
+    await manager.connect(websocket, sesion_id)
+    try:
+        while True:
+            # Nos quedamos escuchando infinitamente (manteniendo el túnel abierto)
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, sesion_id)
+
 
 # --- ENDPOINTS ---
 
@@ -38,7 +76,8 @@ def abrir_mesa(sesion: schemas.SesionMesaCreate, db: Session = Depends(get_db)):
 @app.post("/sesion/{sesion_id}/pedir", response_model=schemas.OrdenItemResponse)
 def agregar_item_a_cuenta(
     sesion_id: uuid.UUID, 
-    pedido: schemas.OrdenItemCreate, 
+    pedido: schemas.OrdenItemCreate,
+    background_tasks: BackgroundTasks, 
     db: Session = Depends(get_db)
 ):
     # 1. Verificar si la sesión existe y está activa
@@ -67,6 +106,10 @@ def agregar_item_a_cuenta(
             "cantidad": pedido.cantidad
         })
         redis_client.actualizar_estado_mesa(str(sesion_id), estado_actual)
+
+    # 4. ¡LA MAGIA MULTIJUGADOR! 
+    # Le gritamos a todos los celulares de la mesa que recarguen sus platillos
+    background_tasks.add_task(manager.broadcast, "actualizar_mesa", str(sesion_id))
 
     return nueva_orden
 

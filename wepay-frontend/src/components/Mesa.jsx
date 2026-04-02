@@ -37,8 +37,6 @@ export default function Mesa() {
             try {
                 // 1. Consultar detalles de la sesión
                 const resSesion = await api.get(`/sesiones/sesion/${id}`, {
-                // const resSesion = await axios.get(`http://192.168.100.26:8080/sesiones/sesion/${id}`, {
-                // const resSesion = await axios.get(`http://localhost:8080/sesiones/sesion/${id}`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const datosSesion = resSesion.data;
@@ -46,16 +44,12 @@ export default function Mesa() {
 
                 // 2. Traer las CATEGORÍAS de este restaurante
                 const resCat = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
-                // const resCat = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
-                // const resCat = await axios.get(`http://localhost:8080/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setCategorias(resCat.data);
 
                 // 3. Traer los PLATILLOS
                 const resMenu = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
-                // const resMenu = await axios.get(`http://192.168.100.26:8080/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
-                // const resMenu = await axios.get(`http://localhost:8080/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 setMenuItems(resMenu.data);
@@ -78,14 +72,15 @@ export default function Mesa() {
             const token = localStorage.getItem('wepay_user_id');
 
             await api.post(`/sesiones/sesion/${id}/pedir`, {
-            // await axios.post(`http://192.168.100.26:8080/sesiones/sesion/${id}/pedir`, {
-            // await axios.post(`http://localhost:8080/sesiones/sesion/${id}/pedir`, {
                 usuario_id: token,
                 item_menu_id: item.id,
                 cantidad: cantidadAPedir
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
+
+
+            alert(`¡${cantidadAPedir}x ${item.nombre} agregados!`);
 
             setCantidades(prev => ({ ...prev, [item.id]: 1 }));
 
