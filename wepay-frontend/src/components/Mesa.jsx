@@ -1,15 +1,23 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { jwtDecode } from "jwt-decode";
 import axios from 'axios';
 import {QRCode} from "react-qr-code";
-import api from '../../services/api'
+import api from '../../services/api';
 
 
 export default function Mesa() {
-    const { id } = useParams();
+    const { nombre_restaurante, id } = useParams();
     const navigate = useNavigate();
 
+    const location = useLocation();
+
+    console.log( nombre_restaurante);
+    
+    
+    const queryParams = new URLSearchParams(location.search);
+    // Verificamos si existe el parámetro 'modo=qr'
+    const esModoQR = queryParams.get('modo') === 'qr';
     const [sesion, setSesion] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
     const [categorias, setCategorias] = useState([]); // <-- Nuevo estado para categorías
@@ -25,6 +33,15 @@ export default function Mesa() {
     useEffect(() => {
         const token = localStorage.getItem('wepay_token');
         if (!token) {
+
+
+
+            if (esModoQR) {
+                setLoading(false);
+                return; // Cortamos la ejecución aquí, no lo mandamos al login
+            }
+
+
             const rutaActual = window.location.pathname;
             // Solo guardamos el destino si la ruta actual contiene la palabra "mesa"
             if (rutaActual.includes('/mesa')) {
@@ -127,9 +144,11 @@ export default function Mesa() {
             <nav className="navbar navbar-expand-lg sticky-top shadow-sm" style={{ backgroundColor: '#F37A20' }}>
                 <div className="container d-flex justify-content-between align-items-center">
                     <div className="d-flex align-items-center text-white">
+                        {!esModoQR && (
                         <button onClick={() => navigate('/menu')} className="btn text-white p-0 me-3 border-0">
                             <span className="material-icons fs-2">chevron_left</span>
                         </button>
+                        )}
                         <div>
                             <h5 className="m-0 fw-bold">Mesa {sesion?.numero_mesa}</h5>
                             <small className="opacity-75">Comensales unidos</small>
@@ -146,7 +165,7 @@ export default function Mesa() {
                             <span className="d-none d-sm-inline">Invitar</span>
                         </button>
 
-                        <button onClick={() => navigate(`/cuenta/${id}`)} className="btn btn-dark rounded-pill px-3 fw-bold shadow-sm d-flex align-items-center gap-2">
+                        <button onClick={() => navigate(`/cuenta/${id}?restaurante=${nombre_restaurante}`)} className="btn btn-dark rounded-pill px-3 fw-bold shadow-sm d-flex align-items-center gap-2">
                             <span className="material-icons fs-5">shopping_cart</span>
                             <span className="d-none d-sm-inline">Ver Cuenta</span>
                         </button>

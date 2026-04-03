@@ -22,3 +22,11 @@ class OrdenItem(Base):
     item_menu_id = Column(UUID(as_uuid=True), nullable=False)
     cantidad = Column(Integer, default=1)
     pagado = Column(Boolean, default=False)
+
+
+class MesaFisica(Base):
+    __tablename__ = "mesas_fisicas"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    restaurante_id = Column(UUID(as_uuid=True), nullable=False) # Para saber a qué restaurante pertenece
+    nombre = Column(String, nullable=False) # Ej. "1", "5", "Terraza"

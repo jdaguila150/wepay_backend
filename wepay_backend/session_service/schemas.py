@@ -34,3 +34,11 @@ class OrdenItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class VerificarMesaFisica(BaseModel):
+    restaurante_id: uuid.UUID  # Usa str si tus IDs de restaurante son UUIDs
+    numero_mesa: str     # Ej. "1", "Terraza", etc.
+
+
+class MesaFisicaCreate(BaseModel):
+    nombre: str

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import api from '../../services/api'
 
@@ -14,13 +14,24 @@ export default function Cuenta() {
     
     const miUsuarioId = localStorage.getItem('wepay_user_id');
 
-   useEffect(() => {
+    const location = useLocation();
+    
+
+    const queryParams = new URLSearchParams(location.search);
+
+    const restaurante = queryParams.get('restaurante');
+
+
+
+    
+    
+    useEffect(() => {
         const token = localStorage.getItem('wepay_token');
         if (!token) {
             navigate('/login');
             return;
         }
-
+        
         const cargarCuenta = async () => {
             try {
                 // 1. Traer el estado en vivo desde Redis (Microservicio de Sesiones)
@@ -116,7 +127,7 @@ export default function Cuenta() {
             {/* Navbar */}
             <nav className="navbar navbar-expand-lg sticky-top shadow-sm" style={{ backgroundColor: '#2c3e50' }}>
                 <div className="container d-flex justify-content-between align-items-center">
-                    <button onClick={() => navigate(`/mesa/${id}`)} className="btn text-white p-0 d-flex align-items-center border-0">
+                    <button onClick={() => navigate(`/local/${restaurante}/mesa/${id}`)} className="btn text-white p-0 d-flex align-items-center border-0">
                         <span className="material-icons fs-2 me-1">arrow_back</span>
                         <span className="fw-bold">Volver a la Mesa</span>
                     </button>

@@ -6,6 +6,8 @@ import Menu from './components/Menu';
 import Mesa from './components/Mesa';
 import Cuenta from './components/Cuenta';
 import CerrarPagar from './components/CerrarPagar';
+import PuertaFisica from './components/PuertaFisica';
+
 
 // Un componente temporal para cuando el login sea exitoso
 function MenuPlaceholder() {
@@ -36,13 +38,18 @@ function App() {
         <Route path="/menu" element={<Menu />} />
 
         {/* Ruta dinámica que recibe el ID de la sesión generada */}
-        <Route path="/mesa/:id" element={<Mesa />} />
+        <Route path="/local/:nombre_restaurante/mesa/:id" element={<Mesa />} />
+        {/* <Route path="/mesa/:id" element={<Mesa />} /> */}
 
         {/* Ruta para generar la cuenta */}
         <Route path="/cuenta/:id" element={<Cuenta />} />
 
         {/* Ruta para pagar la cuenta */}
         <Route path="/pagar/:id" element={<CerrarPagar />} />
+
+        <Route path="/local/:nombre_restaurante/id/:restaurante_id/mesa_fisica/:numero_mesa" element={<PuertaFisica />} />
+
+
       </Routes>
     </BrowserRouter>
   );

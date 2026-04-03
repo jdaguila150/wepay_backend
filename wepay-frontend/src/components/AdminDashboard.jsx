@@ -26,6 +26,9 @@ export default function AdminDashboard() {
     const [mesasActivas, setMesasActivas] = useState([]);
     const [cargandoMesas, setCargandoMesas] = useState(false);
 
+    // --- ESTADOS PARA MESAS FÍSICAS (CÓDIGOS QR) ---
+    const [mesasFisicas, setMesasFisicas] = useState([]);
+    const [nuevaMesaFisica, setNuevaMesaFisica] = useState('');
 
 
 
@@ -75,10 +78,16 @@ export default function AdminDashboard() {
             
             // ¡NUEVO! Cargar las mesas de este restaurante
             cargarMesasActivas(rest.id); 
+
+            // ¡NUEVO! Cargar el catálogo de mesas físicas para los QRs
+            cargarMesasFisicas(rest.id);
+
+
         } catch (err) {
             setCategorias([]);
             setProductos([]);
             setMesasActivas([]); // Limpiar por si acaso
+            setMesasFisicas([]);
         }
     };
 
@@ -151,6 +160,39 @@ export default function AdminDashboard() {
         prod.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (categorias.find(c => c.id === prod.categoria_id)?.nombre || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
+
+    // --- LÓGICA DE MESAS FÍSICAS (CATÁLOGO PARA QRs) ---
+    const cargarMesasFisicas = async (idRestaurante = restauranteSeleccionado?.id) => {
+        if (!idRestaurante) return;
+        try {
+            const token = localStorage.getItem('wepay_token');
+            const res = await api.get(`/sesiones/restaurantes/${idRestaurante}/mesas`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setMesasFisicas(res.data);
+        } catch (error) {
+            console.error("Error al cargar el catálogo de mesas:", error);
+        }
+    };
+
+    const handleCrearMesaFisica = async (e) => {
+        e.preventDefault();
+        if (!nuevaMesaFisica.trim()) return;
+
+        try {
+            const token = localStorage.getItem('wepay_token');
+            await api.post(`/sesiones/restaurantes/${restauranteSeleccionado.id}/mesas`, 
+                { nombre: nuevaMesaFisica }, 
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            
+            setNuevaMesaFisica(''); // Limpiamos el input
+            cargarMesasFisicas(restauranteSeleccionado.id); // Recargamos la lista
+        } catch (err) {
+            // Si el backend lanza el error 400 que configuramos (mesa duplicada)
+            alert(err.response?.data?.detail || "Hubo un error al crear la mesa.");
+        }
+    };
 
     return (
         <div className="min-vh-100 bg-light pb-5">
@@ -309,6 +351,72 @@ export default function AdminDashboard() {
                             </div>
                         </div>
                         {/* --- FIN SECCIÓN CONTROL DE MESAS --- */}
+
+
+                        {/* --- SECCIÓN DE CATÁLOGO DE MESAS FÍSICAS (NUEVO) --- */}
+                        <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+                            <div className="card-header bg-white p-3 border-bottom">
+                                <h6 className="fw-bold m-0 d-flex align-items-center gap-2 text-dark">
+                                    <span className="material-icons" style={{ color: '#F37A20' }}>qr_code_2</span>
+                                    Catálogo de Mesas (Para QRs)
+                                </h6>
+                                <p className="text-muted small m-0 mt-1">
+                                    Agrega las mesas de tu local. Estas aparecerán en la pantalla principal para imprimir sus códigos QR.
+                                </p>
+                            </div>
+
+                            <div className="card-body p-4 bg-light bg-opacity-50">
+                                {/* Formulario para agregar nueva mesa */}
+                                <form onSubmit={handleCrearMesaFisica} className="mb-4">
+                                    <div className="d-flex gap-2">
+                                        <div className="input-group bg-white rounded-pill shadow-sm border overflow-hidden">
+                                            <span className="input-group-text bg-transparent border-0 pe-0 text-muted">
+                                                <span className="material-icons fs-5">table_restaurant</span>
+                                            </span>
+                                            <input
+                                                type="text"
+                                                className="form-control border-0 shadow-none ps-2"
+                                                placeholder="Ej. Mesa 1, Terraza, Barra..."
+                                                value={nuevaMesaFisica}
+                                                onChange={(e) => setNuevaMesaFisica(e.target.value)}
+                                                required
+                                            />
+                                        </div>
+                                        <button 
+                                            type="submit" 
+                                            className="btn text-white fw-bold px-4 rounded-pill shadow-sm d-flex align-items-center gap-1"
+                                            style={{ backgroundColor: '#F37A20' }}
+                                        >
+                                            <span className="material-icons fs-5">add</span>
+                                            Agregar
+                                        </button>
+                                    </div>
+                                </form>
+
+                                {/* Cuadrícula de mesas existentes */}
+                                {mesasFisicas.length === 0 ? (
+                                    <div className="text-center py-4 bg-white rounded-4 border dashed-border">
+                                        <span className="material-icons fs-1 text-muted opacity-25 mb-2">table_restaurant</span>
+                                        <p className="text-muted m-0 fw-bold">Aún no has registrado mesas.</p>
+                                        <p className="text-muted small m-0">Agrega una arriba para empezar.</p>
+                                    </div>
+                                ) : (
+                                    <div className="d-flex flex-wrap gap-2">
+                                        {mesasFisicas.map((mesa) => (
+                                            <div 
+                                                key={mesa.id} 
+                                                className="bg-white border rounded-pill px-3 py-2 d-flex align-items-center gap-2 shadow-sm"
+                                                style={{ animation: 'cardFadeIn 0.3s ease-out' }}
+                                            >
+                                                <span className="material-icons text-secondary" style={{ fontSize: '18px' }}>table_restaurant</span>
+                                                <span className="fw-bold text-dark">{mesa.nombre}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {/* --- FIN SECCIÓN CATÁLOGO DE MESAS FÍSICAS --- */}
 
                         <div className="row g-4">
                             {/* Columna Categorías */}
