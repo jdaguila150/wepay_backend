@@ -130,3 +130,41 @@ async def procesar_pago(
         },
         "estado_sesion": estado_mesa
     }
+
+
+@app.post("/sesion/{sesion_id}/proponer-tablas")
+async def proponer_tablas_endpoint(sesion_id: uuid.UUID, propuesta: schemas.PropuestaTablas):
+    
+    # 👇 NUEVO: 1. Pegar el Post-it en Redis (Sesiones)
+    async with httpx.AsyncClient() as client:
+        await client.post(f"http://127.0.0.1:8002/sesion/{sesion_id}/guardar-propuesta", json=propuesta.dict())
+
+    # 2. Armamos el paquete y damos el grito por el WebSocket
+    mensaje_ws = {
+        "accion": "nueva_propuesta_tablas",
+        "datos": {
+            "creador_id": propuesta.creador_id,
+            "creador_nombre": propuesta.creador_nombre,
+            "participantes": propuesta.participantes,
+            "monto_por_persona": propuesta.monto_por_persona
+        }
+    }
+
+    try:
+        await manager.broadcast(json.dumps(mensaje_ws), str(sesion_id))
+        return {"mensaje": "Propuesta lanzada y guardada exitosamente"}
+    except Exception as e:
+        print(f"Error en broadcast: {e}")
+        return {"error": "No se pudo notificar a la mesa en vivo"}
+
+
+
+@app.post("/sesion/{sesion_id}/aceptar-tablas")
+async def aceptar_tablas_ws(sesion_id: uuid.UUID, datos: schemas.AceptarTablas):
+    # 1. Le pasamos el acuerdo al microservicio de Sesiones para que lo guarde
+    async with httpx.AsyncClient() as client:
+        await client.post(f"http://127.0.0.1:8002/sesion/{sesion_id}/registrar-transferencia", json=datos.dict())
+        
+    # 2. Le gritamos a la mesa que los números cambiaron para que recarguen
+    await manager.broadcast(json.dumps({"accion": "recargar_mesa", "mensaje": "Alguien aceptó las tablas"}), str(sesion_id))
+    return {"mensaje": "Tablas aceptadas y mesa notificada"}

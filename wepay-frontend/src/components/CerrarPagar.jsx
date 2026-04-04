@@ -8,18 +8,18 @@ export default function CerrarPagar() {
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
-    
+
     // Estados para "Mi Cuenta"
     const [misItems, setMisItems] = useState([]);
     const [miSubtotal, setMiSubtotal] = useState(0);
 
     const [miTotalOriginal, setMiTotalOriginal] = useState(0);
     const [miAbono, setMiAbono] = useState(0);
-    
+
     // --- NUEVOS ESTADOS PARA VECINOS ---
     const [vecinos, setVecinos] = useState([]); // Guardará: [{ id_unico, nombre, subtotal }]
     const [aportaciones, setAportaciones] = useState({}); // Guardará: { "id_paco": 150.50 }
-    
+
     const [propinaPct, setPropinaPct] = useState(0.10);
     const [procesando, setProcesando] = useState(false);
 
@@ -27,6 +27,14 @@ export default function CerrarPagar() {
     const miUsuarioId = localStorage.getItem('wepay_user_id');
     const invitadoGuardado = localStorage.getItem('wepay_invitado');
     const miInvitado = invitadoGuardado ? JSON.parse(invitadoGuardado) : null;
+
+    // --- ESTADOS PARA "IR A TABLAS" ---
+    const [mostrarModalTablas, setMostrarModalTablas] = useState(false);
+    // Guardaremos los IDs o Nombres de los amigos seleccionados
+    const [amigosParaTablas, setAmigosParaTablas] = useState([]);
+
+    // Guardará los datos de la propuesta si alguien nos invita
+    const [propuestaEntrante, setPropuestaEntrante] = useState(null);
 
     useEffect(() => {
         // En esta vista, sí necesitamos saber quién es el que paga. 
@@ -43,12 +51,28 @@ export default function CerrarPagar() {
                 const resEstado = await api.get(`/sesiones/sesion/${id}/estado`, configAxios);
                 const estado = resEstado.data;
 
-                console.log("🕵️‍♂️ Items recibidos del backend:", estado.items);
+                // Revisar si hay un "Post-it" de propuesta pendiente
+                if (estado.propuesta_activa) {
+                    const miIdentificador = miUsuarioId || miInvitado?.nombre;
+                    if (estado.propuesta_activa.participantes.includes(miIdentificador)) {
+                        setPropuestaEntrante(estado.propuesta_activa);
+                    }
+                } else {
+                    // 👇 NUEVO: Si NO hay propuesta en el backend, cerramos el modal
+                    setPropuestaEntrante(propuestaPrevia => {
+                        // Si el usuario tenía el modal abierto y de repente se canceló...
+                        if (propuestaPrevia) {
+                            alert("⚠️ La propuesta de tablas se ha cancelado porque la cuenta de la mesa cambió (alguien pidió algo nuevo).");
+                        }
+                        return null; // Forzamos al modal a desaparecer
+                    });
+                }
+
 
                 const resMenu = await api.get(`/menu/restaurantes/${estado.restaurante_id}/items`, configAxios);
                 const menu = resMenu.data;
 
-              // 👇 1. Preparación de variables y lectura de abonos
+                // 👇 1. Preparación de variables y lectura de abonos
                 const abonosMesa = estado.abonos || {};
                 const miIdentificador = miUsuarioId || miInvitado?.nombre;
 
@@ -59,11 +83,11 @@ export default function CerrarPagar() {
                 // 👇 2. UN SOLO FOREACH: Clasificamos pedidos y sumamos el total crudo
                 estado.items.forEach(pedido => {
                     // Si un taco ya está pagado al 100%, ni siquiera lo sumamos
-                    if (pedido.pagado === true) return; 
+                    if (pedido.pagado === true) return;
 
                     const detalleItem = menu.find(m => m.id === pedido.item_id);
                     const costoTotal = (detalleItem?.precio || 0) * pedido.cantidad;
-                    
+
                     const itemProcesado = {
                         ...pedido,
                         nombre_producto: detalleItem?.nombre || 'Producto Desconocido',
@@ -72,8 +96,8 @@ export default function CerrarPagar() {
                     };
 
                     // ¿Este pedido es mío?
-                    const esMio = (miUsuarioId && pedido.usuario_id === miUsuarioId) || 
-                                  (!miUsuarioId && pedido.nombre_usuario === miInvitado?.nombre);
+                    const esMio = (miUsuarioId && pedido.usuario_id === miUsuarioId) ||
+                        (!miUsuarioId && pedido.nombre_usuario === miInvitado?.nombre);
 
                     if (esMio) {
                         misPedidosTemp.push(itemProcesado);
@@ -81,12 +105,12 @@ export default function CerrarPagar() {
                     } else {
                         // Es de un vecino. Lo agrupamos.
                         const keyVecino = pedido.usuario_id || pedido.nombre_usuario || 'Desconocido';
-                        
+
                         if (!consumoVecinosTemp[keyVecino]) {
                             consumoVecinosTemp[keyVecino] = {
                                 id_unico: keyVecino,
                                 nombre: pedido.nombre_usuario || 'Usuario Registrado',
-                                total_consumido: 0 
+                                total_consumido: 0
                             };
                         }
                         consumoVecinosTemp[keyVecino].total_consumido += costoTotal;
@@ -94,7 +118,7 @@ export default function CerrarPagar() {
                 });
 
                 // 👇 3. LA MATEMÁTICA FINANCIERA (Restamos los abonos) 👇
-                
+
                 // Restamos mi abono de mi deuda
                 const miAbono = abonosMesa[miIdentificador] || 0;
                 let miDeudaReal = miSub - miAbono;
@@ -105,7 +129,7 @@ export default function CerrarPagar() {
                     const abonoVecino = abonosMesa[vecino.id_unico] || 0;
                     let deudaVecino = vecino.total_consumido - abonoVecino;
                     if (deudaVecino < 0) deudaVecino = 0;
-                    
+
                     return {
                         ...vecino,
                         subtotal: deudaVecino // Esto es lo que verá la pantalla
@@ -116,7 +140,7 @@ export default function CerrarPagar() {
                 setMisItems(misPedidosTemp);
                 setMiTotalOriginal(miSub);          // Guardamos cuánto costaban los tacos
                 setMiAbono(miAbono);       // Guardamos cuánto dinero ya metió a la cuenta
-                setMiSubtotal(miDeudaReal); 
+                setMiSubtotal(miDeudaReal);
                 // Solo mostramos a los vecinos que aún deben dinero
                 setVecinos(vecinosProcesados.filter(v => v.subtotal > 0));
 
@@ -137,16 +161,41 @@ export default function CerrarPagar() {
         // Asegúrate de que esta URL apunte correctamente a tu API Gateway o al puerto de Pagos
         const ws = new WebSocket(`ws://localhost:8080/pagos/ws/${id}`);
 
+
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            // Si el backend nos avisa que alguien acaba de pagar...
-            if (data.accion === "recargar_mesa") {
-                console.log("¡Actualización en la mesa!", data.mensaje);
-                // ...volvemos a ejecutar la función silenciosamente para recalcular la cuenta
-                cargarDatosPago(); 
+            try {
+                // Parseamos el JSON que manda el backend
+                const data = JSON.parse(event.data);
+
+                // 1. Si el backend nos avisa que alguien acaba de pagar...
+                if (data.accion === "recargar_mesa") {
+                    console.log("¡Actualización en la mesa!", data.mensaje);
+                    // ...volvemos a ejecutar la función silenciosamente para recalcular la cuenta
+                    cargarDatosPago();
+                }
+
+                // 👇 2. NUEVA LÓGICA: Si el backend grita una propuesta de tablas...
+                else if (data.accion === "nueva_propuesta_tablas") {
+
+                    // Identificamos quién soy yo en este navegador
+                    const miIdentificador = miUsuarioId || miInvitado?.nombre;
+
+                    // Si mi nombre o ID está dentro del arreglo de participantes... ¡Soy yo!
+                    if (data.datos.participantes.includes(miIdentificador)) {
+                        console.log("¡Me acaban de invitar a tablas!");
+                        setPropuestaEntrante(data.datos); // Disparamos el modal de sorpresa
+                    }
+                }
+
+            } catch (error) {
+                // Respaldo de seguridad: por si el backend manda texto plano en lugar de JSON
+                if (event.data === "actualizar_mesa") {
+                    console.log("¡Actualización en la mesa (texto)!");
+                    cargarDatosPago();
+                }
             }
         };
+
 
         // 3. Limpieza de memoria
         // Si el usuario se sale de la pantalla "CerrarPagar", desconectamos el socket
@@ -156,7 +205,7 @@ export default function CerrarPagar() {
 
     }, [id, navigate, miUsuarioId]);
 
-    
+
     // --- NUEVA FUNCIÓN PARA APOYAR A VECINOS ---
     const handleApoyarVecino = (idVecino, porcentaje) => {
         const vecino = vecinos.find(v => v.id_unico === idVecino);
@@ -174,7 +223,7 @@ export default function CerrarPagar() {
         }
 
         let monto = parseFloat(valorIngresado);
-        
+
         // Validaciones de seguridad: ni negativo, ni más de lo que debe el amigo
         if (monto < 0) monto = 0;
         if (monto > maximo) monto = maximo;
@@ -188,7 +237,7 @@ export default function CerrarPagar() {
     // --- CÁLCULOS FINALES ---
     // Sumamos todo lo que decidí pagar por mis amigos
     const totalAportaciones = Object.values(aportaciones).reduce((sum, monto) => sum + monto, 0);
-    
+
     // Mi cuenta + Lo que le invito a los demás
     const subtotalFinal = miSubtotal + totalAportaciones;
     const montoPropina = subtotalFinal * propinaPct;
@@ -220,7 +269,7 @@ export default function CerrarPagar() {
             alert(mensajeFinal);
 
             // Al terminar de pagar, los regresamos a la pantalla del menú de su mesa
-            navigate(`/local/Tu_Restaurante/mesa/${id}`); 
+            navigate(`/local/Tu_Restaurante/mesa/${id}`);
 
         } catch (error) {
             alert("Hubo un error al procesar tu pago");
@@ -230,6 +279,88 @@ export default function CerrarPagar() {
         }
     };
 
+
+    // --- LÓGICA DE TABLAS ---
+    // 1. Obtenemos a los vecinos seleccionados usando el array de 'vecinos' que ya tienes
+    const vecinosSeleccionados = vecinos.filter(v => amigosParaTablas.includes(v.id_unico));
+
+    // 2. Sumamos mi deuda + la deuda de los vecinos seleccionados
+    const totalDeudaGrupal = miSubtotal + vecinosSeleccionados.reduce((acc, v) => acc + v.subtotal, 0);
+
+    // 3. Dividimos entre el total de personas (Yo + los amigos seleccionados)
+    const personasEnTablas = 1 + vecinosSeleccionados.length;
+    const cuotaPorPersona = totalDeudaGrupal / personasEnTablas;
+
+    // Función para marcar/desmarcar a un amigo en la lista
+    const toggleAmigoTablas = (idUnico) => {
+        setAmigosParaTablas(prev =>
+            prev.includes(idUnico)
+                ? prev.filter(id => id !== idUnico)
+                : [...prev, idUnico]
+        );
+    };
+
+
+    const enviarPropuestaTablas = async () => {
+        try {
+            const miIdentificador = miUsuarioId || miInvitado?.nombre;
+            const miNombre = miInvitado?.nombre || "Usuario Registrado";
+
+            const payload = {
+                creador_id: miIdentificador,
+                creador_nombre: miNombre,
+                participantes: amigosParaTablas, // El array de IDs seleccionados
+                monto_por_persona: cuotaPorPersona
+            };
+
+            const token = localStorage.getItem('wepay_token');
+            const configAxios = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
+            // Apuntamos al Gateway (8080) -> servicio de sesiones
+            await api.post(`/pagos/sesion/${id}/proponer-tablas`, payload, configAxios);
+            setMostrarModalTablas(false);
+            alert("¡Propuesta enviada! Esperando a que tus amigos acepten...");
+
+        } catch (error) {
+            console.error("Error proponiendo tablas:", error);
+            alert("Hubo un error al enviar la propuesta.");
+        }
+    };
+
+
+    // --- NUEVA LÓGICA: SOLO ACEPTAR LA DEUDA ---
+    const aceptarTablas = async () => {
+        try {
+            const montoAceptado = propuestaEntrante.monto_por_persona;
+            const miIdentificador = miUsuarioId || miInvitado?.nombre;
+            
+            // ¿Cuánto dinero extra estoy asumiendo para ayudar a mi amigo?
+            // (Si yo debía 50 y acepto 150, estoy asumiendo 100 de su deuda)
+            const montoTransferido = montoAceptado - miSubtotal;
+
+            const payload = {
+                creador_id: propuestaEntrante.creador_id,
+                aceptador_id: miIdentificador,
+                monto_transferido: montoTransferido
+            };
+
+            const token = localStorage.getItem('wepay_token');
+            const configAxios = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
+            // Enviamos el "acuerdo" al microservicio de Pagos
+            await api.post(`/pagos/sesion/${id}/aceptar-tablas`, payload, configAxios);
+            
+            setPropuestaEntrante(null); // Cerramos el modal
+            alert("¡Tablas aceptadas! Tu cuenta se ha ajustado.");
+
+        } catch (error) {
+            console.error("Error al aceptar tablas:", error);
+            alert("Hubo un error al aceptar la propuesta.");
+        }
+    };
+
+
+
     if (loading) {
         return (
             <div className="min-vh-100 bg-light d-flex flex-column align-items-center justify-content-center">
@@ -238,8 +369,7 @@ export default function CerrarPagar() {
             </div>
         );
     }
-console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems míos y", vecinos.length, "vecinos");
-  return (
+    return (
         <div className="min-vh-100 bg-light pb-5">
             {/* Navbar Simple */}
             <nav className="navbar navbar-dark shadow-sm sticky-top" style={{ backgroundColor: '#2c3e50' }}>
@@ -258,7 +388,7 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
 
                 {/* --- 1. LISTA DE CONSUMO PERSONAL --- */}
                 <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
-                    
+
                     {/* Banner de Éxito si la deuda es 0 pero sí consumió algo */}
                     {miSubtotal === 0 && miTotalOriginal > 0 && (
                         <div className="bg-success text-white text-center py-2 fw-bold animate__animated animate__fadeIn">
@@ -292,14 +422,14 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
                             <span className="text-muted small">Total Consumido</span>
                             <span className="text-muted small">${miTotalOriginal.toFixed(2)}</span>
                         </div>
-                        
+
                         {miAbono > 0 && (
                             <div className="d-flex justify-content-between align-items-center mb-2 animate__animated animate__fadeIn">
                                 <span className="text-success small fw-bold">Abonos Realizados</span>
                                 <span className="text-success small fw-bold">-${miAbono.toFixed(2)}</span>
                             </div>
                         )}
-                        
+
                         <div className="d-flex justify-content-between align-items-center border-top pt-2 mt-2">
                             <span className="fw-bold text-dark">Mi Deuda Restante</span>
                             <span className="fw-bold text-dark fs-5">${miSubtotal.toFixed(2)}</span>
@@ -313,6 +443,21 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
                         <h4 className="fw-bold text-dark mt-5 mb-4 text-center">Apoyar a tus amigos</h4>
                         <div className="card border-0 shadow-sm rounded-4 mb-4">
                             <div className="card-body p-4">
+                                {/* Botón para Proponer Tablas */}
+                                {vecinos.length > 0 && (
+                                    <div className="d-grid mb-3">
+                                        <button
+                                            className="btn btn-outline-primary fw-bold d-flex align-items-center justify-content-center gap-2"
+                                            onClick={() => {
+                                                setAmigosParaTablas([]); // Limpiamos selecciones previas
+                                                setMostrarModalTablas(true);
+                                            }}
+                                        >
+                                            <span className="material-icons">pie_chart</span>
+                                            ¡Proponer ir a Tablas!
+                                        </button>
+                                    </div>
+                                )}
                                 <ul className="list-group list-group-flush">
                                     {vecinos.map((vecino) => {
                                         const aportacionActual = aportaciones[vecino.id_unico] || 0;
@@ -333,7 +478,7 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
                                                         <span className="text-dark fw-bold">${vecino.subtotal.toFixed(2)}</span>
                                                     </div>
                                                 </div>
-                                                
+
                                                 {/* --- CONTROLES DE APORTACIÓN --- */}
                                                 <div className="mt-3 bg-light p-2 rounded-4 border">
                                                     {/* 1. Botones Rápidos */}
@@ -352,8 +497,8 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
                                                     {/* 2. Input Personalizado */}
                                                     <div className="input-group input-group-sm shadow-sm rounded-pill overflow-hidden border bg-white">
                                                         <span className="input-group-text bg-transparent border-0 text-muted fw-bold ps-3">$</span>
-                                                        <input 
-                                                            type="number" 
+                                                        <input
+                                                            type="number"
                                                             className="form-control border-0 shadow-none fw-bold text-primary"
                                                             placeholder="Monto exacto a invitar..."
                                                             value={aportacionActual > 0 ? aportacionActual : ''}
@@ -362,7 +507,7 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
                                                             max={vecino.subtotal}
                                                             step="0.01"
                                                         />
-                                                        <button 
+                                                        <button
                                                             className="btn btn-light border-0 text-secondary pe-3 fw-bold small bg-transparent"
                                                             onClick={() => handleApoyarVecino(vecino.id_unico, 100)}
                                                         >
@@ -385,7 +530,7 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
                                     })}
                                 </ul>
                             </div>
-                            
+
                             {/* Resumen de aportaciones */}
                             {totalAportaciones > 0 && (
                                 <div className="card-footer bg-success bg-opacity-10 border-0 p-3 d-flex justify-content-between align-items-center rounded-bottom-4">
@@ -468,6 +613,107 @@ console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems 
                     </button>
                 </div>
             </div>
+            {/* --- MODAL PARA PROPONER TABLAS --- */}
+            {mostrarModalTablas && (
+                <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+                    <div className="modal-dialog modal-dialog-centered">
+                        <div className="modal-content rounded-4 border-0 shadow">
+                            <div className="modal-header border-bottom-0 pb-0">
+                                <h5 className="modal-title fw-bold">🤝 Dividir Cuenta (Ir a Tablas)</h5>
+                                <button type="button" className="btn-close" onClick={() => setMostrarModalTablas(false)}></button>
+                            </div>
+                            <div className="modal-body">
+                                <p className="text-muted small">Selecciona con quién quieres dividir la cuenta a partes iguales.</p>
+
+                                <ul className="list-group mb-3">
+                                    {/* Yo siempre estoy en las tablas */}
+                                    <li className="list-group-item bg-light d-flex justify-content-between align-items-center">
+                                        <div className="d-flex align-items-center gap-2">
+                                            <span className="material-icons text-primary">person</span>
+                                            <span>Mi deuda actual</span>
+                                        </div>
+                                        <span className="fw-bold">${miSubtotal.toFixed(2)}</span>
+                                    </li>
+
+                                    {/* Lista de vecinos para seleccionar */}
+                                    {vecinos.map((v, idx) => (
+                                        <li key={idx} className="list-group-item d-flex justify-content-between align-items-center cursor-pointer" onClick={() => toggleAmigoTablas(v.id_unico)}>
+                                            <div className="d-flex align-items-center gap-2">
+                                                <input
+                                                    className="form-check-input mt-0"
+                                                    type="checkbox"
+                                                    checked={amigosParaTablas.includes(v.id_unico)}
+                                                    readOnly
+                                                />
+                                                <span>{v.nombre}</span>
+                                            </div>
+                                            <span className="text-muted">${v.subtotal.toFixed(2)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+
+                                {/* Resumen Matemático */}
+                                {amigosParaTablas.length > 0 && (
+                                    <div className="bg-primary text-white p-3 rounded-3 text-center animate__animated animate__fadeIn">
+                                        <p className="m-0 small text-white-50">Total a dividir: ${totalDeudaGrupal.toFixed(2)}</p>
+                                        <h4 className="m-0 fw-bold mt-1">
+                                            Nos toca de: ${cuotaPorPersona.toFixed(2)}
+                                        </h4>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="modal-footer border-top-0 pt-0">
+                                <button type="button" className="btn btn-light" onClick={() => setMostrarModalTablas(false)}>Cancelar</button>
+                                <button
+                                    type="button"
+                                    className="btn btn-primary"
+                                    disabled={amigosParaTablas.length === 0}
+                                    onClick={enviarPropuestaTablas}
+                                >
+                                    Enviar Propuesta
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* --- MODAL DE INVITACIÓN RECIBIDA (Para los amigos) --- */}
+            {propuestaEntrante && (
+                <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1060 }}>
+                    <div className="modal-dialog modal-dialog-centered">
+                        <div className="modal-content border-0 shadow-lg text-center p-4 rounded-4 animate__animated animate__bounceIn">
+                            <div className="mb-3">
+                                <span className="material-icons text-warning" style={{ fontSize: '48px' }}>celebration</span>
+                            </div>
+                            <h4 className="fw-bold mb-3">¡Propuesta de Tablas!</h4>
+
+                            <p className="text-muted mb-4 text-balance">
+                                <strong className="text-dark">{propuestaEntrante.creador_nombre}</strong> te ha propuesto dividir la cuenta a partes iguales con el grupo.
+                            </p>
+
+                            <div className="bg-light rounded-3 p-3 mb-4 border">
+                                <p className="small text-muted m-0">Si aceptas, tu nueva cuota será de:</p>
+                                <h2 className="fw-bold text-success m-0">${propuestaEntrante.monto_por_persona.toFixed(2)}</h2>
+                            </div>
+
+                            <div className="d-grid gap-2">
+                                <button 
+                                    className="btn btn-success fw-bold py-2"
+                                    onClick={aceptarTablas}
+                                >
+                                    ¡Sí, acepto!
+                                </button>
+                                <button 
+                                    className="btn btn-outline-danger"
+                                    onClick={() => setPropuestaEntrante(null)}
+                                >
+                                    Declinar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

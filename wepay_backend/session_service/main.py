@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocke
 from sqlalchemy.orm import Session
 from typing import Dict, List
 import uuid
+import json
 
 from database import engine, get_db
 import models, schemas, redis_client
@@ -149,6 +150,10 @@ def agregar_item_a_cuenta(
     # 3. Actualizar el estado en Redis
     estado_actual = redis_client.obtener_estado_mesa(str(sesion_id))
     if estado_actual:
+        # 👇 NUEVO: Destruimos la propuesta activa (si la hay) porque las matemáticas cambiaron 👇
+        if estado_actual.get("propuesta_activa"):
+            estado_actual["propuesta_activa"] = None
+
         estado_actual["items"].append({
             "usuario_id": str(pedido.usuario_id) if pedido.usuario_id else None,
             "nombre_usuario": pedido.nombre_usuario, # Se guarda en caché
@@ -161,7 +166,6 @@ def agregar_item_a_cuenta(
     background_tasks.add_task(manager.broadcast, "actualizar_mesa", str(sesion_id))
 
     return nueva_orden
-
     
 @app.get("/sesion/{sesion_id}/estado")
 def ver_estado_mesa(sesion_id: uuid.UUID, db: Session = Depends(get_db)):
@@ -323,3 +327,56 @@ def webhook_marcar_pagado(sesion_id: uuid.UUID, datos: schemas.NotificacionPago,
         redis_client.actualizar_estado_mesa(str(sesion_id), estado_actual)
 
     return {"mensaje": "Abonos registrados exitosamente."}
+
+
+
+@app.post("/sesion/{sesion_id}/registrar-transferencia")
+def registrar_transferencia(sesion_id: uuid.UUID, datos: schemas.AceptarTablas, db: Session = Depends(get_db)):
+    
+    # 1. El que acepta asume la deuda extra (abono negativo = más deuda)
+    db.add(models.AbonoSesion(sesion_id=sesion_id, identificador=datos.aceptador_id, monto=-datos.monto_transferido))
+    
+    # 2. El que propuso se libera de esa deuda (abono positivo = menos deuda)
+    db.add(models.AbonoSesion(sesion_id=sesion_id, identificador=datos.creador_id, monto=datos.monto_transferido))
+    
+    db.commit()
+
+    # 3. Actualizamos Redis para que el WebSocket muestre el cambio instantáneo
+    estado = redis_client.obtener_estado_mesa(str(sesion_id))
+    if estado:
+        if "abonos" not in estado:
+            estado["abonos"] = {}
+            
+        actual_aceptador = estado["abonos"].get(datos.aceptador_id, 0.0)
+        estado["abonos"][datos.aceptador_id] = actual_aceptador - datos.monto_transferido
+        
+        actual_creador = estado["abonos"].get(datos.creador_id, 0.0)
+        estado["abonos"][datos.creador_id] = actual_creador + datos.monto_transferido
+        
+        # 👇 NUEVO: Romper el Post-it para el usuario que ya aceptó
+        if "propuesta_activa" in estado and estado["propuesta_activa"]:
+            participantes = estado["propuesta_activa"].get("participantes", [])
+            
+            # Si el aceptador estaba en la lista, lo borramos
+            if datos.aceptador_id in participantes:
+                participantes.remove(datos.aceptador_id)
+            
+            # Si ya nadie falta por aceptar, borramos la propuesta completa
+            if len(participantes) == 0:
+                estado["propuesta_activa"] = None
+            else:
+                estado["propuesta_activa"]["participantes"] = participantes
+
+        redis_client.actualizar_estado_mesa(str(sesion_id), estado)
+        
+    return {"ok": True}
+
+
+@app.post("/sesion/{sesion_id}/guardar-propuesta")
+def guardar_propuesta(sesion_id: uuid.UUID, propuesta: schemas.PropuestaTablas, db: Session = Depends(get_db)):
+    estado = redis_client.obtener_estado_mesa(str(sesion_id))
+    if estado:
+        # Pegamos el "Post-it" en el estado de la mesa
+        estado["propuesta_activa"] = propuesta.dict()
+        redis_client.actualizar_estado_mesa(str(sesion_id), estado)
+    return {"ok": True}

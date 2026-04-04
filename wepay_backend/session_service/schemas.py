@@ -60,3 +60,16 @@ class NotificacionPago(BaseModel):
     # 4. Diccionario con los abonos a otras personas de la mesa
     # Ejemplo: {"UUID-de-Ana": 150.50, "Paco": 50.0}
     aportaciones_vecinos: Optional[Dict[str, float]] = {}
+
+
+class AceptarTablas(BaseModel):
+    creador_id: str
+    aceptador_id: str
+    monto_transferido: float
+
+
+class PropuestaTablas(BaseModel):
+    creador_id: str
+    creador_nombre: str
+    participantes: List[str]
+    monto_por_persona: float

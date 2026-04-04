@@ -26,3 +26,16 @@ class PagoResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PropuestaTablas(BaseModel):
+    creador_id: str
+    creador_nombre: str
+    participantes: list[str] # Lista de IDs o nombres de los invitados
+    monto_por_persona: float
+
+class AceptarTablas(BaseModel):
+    creador_id: str
+    aceptador_id: str
+    monto_transferido: float
+
