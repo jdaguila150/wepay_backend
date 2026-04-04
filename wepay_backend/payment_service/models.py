@@ -9,8 +9,9 @@ class Pago(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sesion_id = Column(UUID(as_uuid=True), nullable=False)
-    usuario_id = Column(UUID(as_uuid=True), nullable=False)
+    usuario_id = Column(UUID(as_uuid=True), nullable=True)
     monto = Column(Float, nullable=False)
     metodo_pago = Column(String, default="tarjeta") # tarjeta, efectivo, transferencia
     completado = Column(Boolean, default=False)
     fecha_pago = Column(DateTime(timezone=True), server_default=func.now())
+

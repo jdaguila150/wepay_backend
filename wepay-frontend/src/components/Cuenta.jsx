@@ -89,27 +89,36 @@ export default function Cuenta() {
 
         // // --- 🚀 MAGIA MULTIJUGADOR: WEBSOCKETS EN LA CUENTA 🚀 ---
         
-        // // Abrimos el túnel directo al microservicio de Sesiones (Puerto 8002)
-        // const socket = new WebSocket(`ws://192.168.100.26:8002/ws/sesion/${id}`);
+        // Abrimos el túnel directo al microservicio de Sesiones (Puerto 8002)
+        const socket = new WebSocket(`ws://localhost:8080/ws/sesion/${id}`);
 
-        // socket.onopen = () => {
-        //     console.log("🟢 Cuenta conectada en vivo a WePay");
-        // };
+        socket.onopen = () => {
+            console.log("🟢 Cuenta conectada en vivo a WePay");
+        };
 
-        // socket.onmessage = (event) => {
-        //     if (event.data === "actualizar_mesa") {
-        //         console.log("¡Alguien pidió algo! Recargando las matemáticas de la cuenta... 🧮🚀");
-                
-        //         // Ejecutamos tu función para descargar la cuenta fresca y hacer el cruce de nuevo
-        //         cargarCuenta(); 
-        //     }
-        // };
+        socket.onmessage = (event) => {
+            let accion = "";
+            
+            // Intentamos leerlo como JSON primero
+            try {
+                const data = JSON.parse(event.data);
+                accion = data.accion || data; // Por si mandas {"accion": "actualizar_mesa"}
+            } catch (e) {
+                // Si explota el JSON.parse, significa que era texto puro
+                accion = event.data; 
+            }
 
-        // // Limpieza al salir de la pantalla de la cuenta
-        // return () => {
-        //     socket.close();
-        //     console.log("🔴 Cuenta desconectada");
-        // };
+            if (accion === "actualizar_mesa" || accion === "recargar_mesa") {
+                console.log("¡Actualización detectada! Recargando la cuenta... 🧮🚀");
+                cargarCuenta(); 
+            }
+        };
+
+        // Limpieza al salir de la pantalla de la cuenta
+        return () => {
+            socket.close();
+            console.log("🔴 Cuenta desconectada");
+        };
 
     }, [id, navigate]);
 

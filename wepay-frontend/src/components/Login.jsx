@@ -34,14 +34,12 @@ export default function Login() {
             localStorage.setItem('wepay_token', response.data.access_token);
             localStorage.setItem('wepay_user_id', response.data.user_id);
             
-            // --- NUEVA LÓGICA DE REDIRECCIÓN MÁGICA ---
             const destinoPendiente = localStorage.getItem('wepay_redirect');
-           // Si hay un destino Y NO es la propia pantalla de login o la raíz
-            if (destinoPendiente && destinoPendiente !== '/login' && destinoPendiente !== '/') {
+            if (destinoPendiente && destinoPendiente !== '/login' && destinoPendiente !== '/registro' && destinoPendiente !== '/') {
                 localStorage.removeItem('wepay_redirect'); 
                 navigate(destinoPendiente);
             } else {
-                localStorage.removeItem('wepay_redirect'); // Limpiamos por si acaso
+                localStorage.removeItem('wepay_redirect'); 
                 navigate('/menu');
             }
 

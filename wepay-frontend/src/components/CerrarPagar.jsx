@@ -1,57 +1,126 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import api from '../../services/api'
+// Asegúrate de tener api configurado
+import api from '../../services/api';
 
 export default function CerrarPagar() {
     const { id } = useParams(); // ID de la sesión
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
+    
+    // Estados para "Mi Cuenta"
     const [misItems, setMisItems] = useState([]);
     const [miSubtotal, setMiSubtotal] = useState(0);
-    const [propinaPct, setPropinaPct] = useState(0.10); // 10% por defecto
+
+    const [miTotalOriginal, setMiTotalOriginal] = useState(0);
+    const [miAbono, setMiAbono] = useState(0);
+    
+    // --- NUEVOS ESTADOS PARA VECINOS ---
+    const [vecinos, setVecinos] = useState([]); // Guardará: [{ id_unico, nombre, subtotal }]
+    const [aportaciones, setAportaciones] = useState({}); // Guardará: { "id_paco": 150.50 }
+    
+    const [propinaPct, setPropinaPct] = useState(0.10);
     const [procesando, setProcesando] = useState(false);
 
+    // Lógica Híbrida: Saber quién soy yo (VIP o Invitado)
     const miUsuarioId = localStorage.getItem('wepay_user_id');
+    const invitadoGuardado = localStorage.getItem('wepay_invitado');
+    const miInvitado = invitadoGuardado ? JSON.parse(invitadoGuardado) : null;
 
     useEffect(() => {
+        // En esta vista, sí necesitamos saber quién es el que paga. 
+        // Si no es VIP ni tiene nombre temporal, lo regresamos a que se identifique.
         const token = localStorage.getItem('wepay_token');
-        if (!token) return navigate('/login');
+        if (!token && !miInvitado) return navigate(`/local/Tu_Restaurante/mesa/${id}`);
 
         const cargarDatosPago = async () => {
             try {
-                // 1. Traemos el estado de la mesa
-                const resEstado = await api.get(`/sesiones/sesion/${id}/estado`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                // Configuración de Axios inteligente
+                const configAxios = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
+                // 1. Traemos el estado de la mesa y el menú
+                const resEstado = await api.get(`/sesiones/sesion/${id}/estado`, configAxios);
                 const estado = resEstado.data;
 
-                // 2. Traemos el menú para los precios
-                const resMenu = await api.get(`/menu/restaurantes/${estado.restaurante_id}/items`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                console.log("🕵️‍♂️ Items recibidos del backend:", estado.items);
+
+                const resMenu = await api.get(`/menu/restaurantes/${estado.restaurante_id}/items`, configAxios);
                 const menu = resMenu.data;
 
-                // 3. Filtramos SOLO lo que pidió este usuario
-                let subtotal = 0;
-                const miConsumoRaw = estado.items.filter(pedido => pedido.usuario_id === miUsuarioId);
+              // 👇 1. Preparación de variables y lectura de abonos
+                const abonosMesa = estado.abonos || {};
+                const miIdentificador = miUsuarioId || miInvitado?.nombre;
 
-                const miConsumoDetallado = miConsumoRaw.map(pedido => {
+                let miSub = 0;
+                const misPedidosTemp = [];
+                const consumoVecinosTemp = {};
+
+                // 👇 2. UN SOLO FOREACH: Clasificamos pedidos y sumamos el total crudo
+                estado.items.forEach(pedido => {
+                    // Si un taco ya está pagado al 100%, ni siquiera lo sumamos
+                    if (pedido.pagado === true) return; 
+
                     const detalleItem = menu.find(m => m.id === pedido.item_id);
                     const costoTotal = (detalleItem?.precio || 0) * pedido.cantidad;
-                    subtotal += costoTotal;
-
-                    return {
+                    
+                    const itemProcesado = {
                         ...pedido,
-                        nombre: detalleItem?.nombre || 'Producto Desconocido',
+                        nombre_producto: detalleItem?.nombre || 'Producto Desconocido',
                         precioBase: detalleItem?.precio || 0,
                         costoTotal
                     };
+
+                    // ¿Este pedido es mío?
+                    const esMio = (miUsuarioId && pedido.usuario_id === miUsuarioId) || 
+                                  (!miUsuarioId && pedido.nombre_usuario === miInvitado?.nombre);
+
+                    if (esMio) {
+                        misPedidosTemp.push(itemProcesado);
+                        miSub += costoTotal;
+                    } else {
+                        // Es de un vecino. Lo agrupamos.
+                        const keyVecino = pedido.usuario_id || pedido.nombre_usuario || 'Desconocido';
+                        
+                        if (!consumoVecinosTemp[keyVecino]) {
+                            consumoVecinosTemp[keyVecino] = {
+                                id_unico: keyVecino,
+                                nombre: pedido.nombre_usuario || 'Usuario Registrado',
+                                total_consumido: 0 
+                            };
+                        }
+                        consumoVecinosTemp[keyVecino].total_consumido += costoTotal;
+                    }
                 });
 
-                setMisItems(miConsumoDetallado);
-                setMiSubtotal(subtotal);
+                // 👇 3. LA MATEMÁTICA FINANCIERA (Restamos los abonos) 👇
+                
+                // Restamos mi abono de mi deuda
+                const miAbono = abonosMesa[miIdentificador] || 0;
+                let miDeudaReal = miSub - miAbono;
+                if (miDeudaReal < 0) miDeudaReal = 0;
+
+                // Restamos los abonos de los vecinos
+                const vecinosProcesados = Object.values(consumoVecinosTemp).map(vecino => {
+                    const abonoVecino = abonosMesa[vecino.id_unico] || 0;
+                    let deudaVecino = vecino.total_consumido - abonoVecino;
+                    if (deudaVecino < 0) deudaVecino = 0;
+                    
+                    return {
+                        ...vecino,
+                        subtotal: deudaVecino // Esto es lo que verá la pantalla
+                    };
+                });
+
+                // 👇 4. ACTUALIZAMOS EL ESTADO UNA SOLA VEZ 👇
+                setMisItems(misPedidosTemp);
+                setMiTotalOriginal(miSub);          // Guardamos cuánto costaban los tacos
+                setMiAbono(miAbono);       // Guardamos cuánto dinero ya metió a la cuenta
+                setMiSubtotal(miDeudaReal); 
+                // Solo mostramos a los vecinos que aún deben dinero
+                setVecinos(vecinosProcesados.filter(v => v.subtotal > 0));
+
+
 
             } catch (err) {
                 console.error("Error al cargar datos para pago:", err);
@@ -61,30 +130,97 @@ export default function CerrarPagar() {
             }
         };
 
+        // 1. Cargamos los datos normales al entrar a la pantalla
         cargarDatosPago();
+
+        // 2. --- CONEXIÓN AL WEBSOCKET EN TIEMPO REAL ---
+        // Asegúrate de que esta URL apunte correctamente a tu API Gateway o al puerto de Pagos
+        const ws = new WebSocket(`ws://localhost:8080/pagos/ws/${id}`);
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Si el backend nos avisa que alguien acaba de pagar...
+            if (data.accion === "recargar_mesa") {
+                console.log("¡Actualización en la mesa!", data.mensaje);
+                // ...volvemos a ejecutar la función silenciosamente para recalcular la cuenta
+                cargarDatosPago(); 
+            }
+        };
+
+        // 3. Limpieza de memoria
+        // Si el usuario se sale de la pantalla "CerrarPagar", desconectamos el socket
+        return () => {
+            ws.close();
+        };
+
     }, [id, navigate, miUsuarioId]);
+
+    
+    // --- NUEVA FUNCIÓN PARA APOYAR A VECINOS ---
+    const handleApoyarVecino = (idVecino, porcentaje) => {
+        const vecino = vecinos.find(v => v.id_unico === idVecino);
+        if (!vecino) return;
+        const montoAAportar = vecino.subtotal * (porcentaje / 100);
+        setAportaciones(prev => ({ ...prev, [idVecino]: montoAAportar }));
+    };
+
+    // 👇 NUEVA FUNCIÓN PARA EL INPUT PERSONALIZADO 👇
+    const handleMontoPersonalizado = (idVecino, valorIngresado, maximo) => {
+        // Si borran el input, lo tomamos como 0
+        if (valorIngresado === '') {
+            setAportaciones(prev => ({ ...prev, [idVecino]: 0 }));
+            return;
+        }
+
+        let monto = parseFloat(valorIngresado);
+        
+        // Validaciones de seguridad: ni negativo, ni más de lo que debe el amigo
+        if (monto < 0) monto = 0;
+        if (monto > maximo) monto = maximo;
+
+        setAportaciones(prev => ({
+            ...prev,
+            [idVecino]: monto
+        }));
+    };
+
+    // --- CÁLCULOS FINALES ---
+    // Sumamos todo lo que decidí pagar por mis amigos
+    const totalAportaciones = Object.values(aportaciones).reduce((sum, monto) => sum + monto, 0);
+    
+    // Mi cuenta + Lo que le invito a los demás
+    const subtotalFinal = miSubtotal + totalAportaciones;
+    const montoPropina = subtotalFinal * propinaPct;
+    const totalAPagar = subtotalFinal + montoPropina;
 
     const handlePagar = async () => {
         setProcesando(true);
         try {
             const token = localStorage.getItem('wepay_token');
-            const miUsuarioId = localStorage.getItem('wepay_user_id');
+            const configAxios = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 
-            // ¡Ruta actualizada hacia el microservicio de PAGOS!
-            const res = await api.post(`/pagos/procesar`, {
-                sesion_id: id,             // Tu schema exige este campo
-                usuario_id: miUsuarioId,
-                monto: totalAPagar,
-                metodo_pago: "tarjeta"
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // 👇 AQUÍ ESTÁ LA VARIABLE FALTANTE 👇
+            // Calculamos cuánto de nuestro propio consumo estamos pagando
+            const miDeudaRestante = miSubtotal > 0 ? miSubtotal : 0;
 
-            // Extraemos el mensaje que Pagos recibió de Sesiones
+            const payloadPago = {
+                sesion_id: id,
+                usuario_id: miUsuarioId || null,
+                nombre_usuario: miInvitado?.nombre || "Usuario Registrado",
+                monto: totalAPagar, // Esto incluye la propina (lo que va al banco)
+                metodo_pago: "tarjeta",
+                abono_propio: miDeudaRestante, // Esto va a nuestro "Libro Mayor" sin propina
+                aportaciones_vecinos: aportaciones // Lo que le invitas a la mesa
+            };
+
+            const res = await api.post(`/pagos/procesar`, payloadPago, configAxios);
+
             const mensajeFinal = res.data.estado_sesion?.mensaje || "Pago procesado con éxito";
             alert(mensajeFinal);
 
-            navigate('/menu');
+            // Al terminar de pagar, los regresamos a la pantalla del menú de su mesa
+            navigate(`/local/Tu_Restaurante/mesa/${id}`); 
 
         } catch (error) {
             alert("Hubo un error al procesar tu pago");
@@ -98,15 +234,12 @@ export default function CerrarPagar() {
         return (
             <div className="min-vh-100 bg-light d-flex flex-column align-items-center justify-content-center">
                 <div className="spinner-border text-success" role="status"></div>
-                <p className="mt-3 fw-bold text-muted">Preparando tu cuenta segura...</p>
+                <p className="mt-3 fw-bold text-muted">Preparando la cuenta de la mesa...</p>
             </div>
         );
     }
-
-    const montoPropina = miSubtotal * propinaPct;
-    const totalAPagar = miSubtotal + montoPropina;
-
-    return (
+console.log("🖼️ React está a punto de dibujar:", misItems.length, "ítems míos y", vecinos.length, "vecinos");
+  return (
         <div className="min-vh-100 bg-light pb-5">
             {/* Navbar Simple */}
             <nav className="navbar navbar-dark shadow-sm sticky-top" style={{ backgroundColor: '#2c3e50' }}>
@@ -115,7 +248,7 @@ export default function CerrarPagar() {
                         <span className="material-icons fs-2 me-1">close</span>
                     </button>
                     <span className="mx-auto fw-bold text-white fs-5">Caja WePay</span>
-                    <div style={{ width: '32px' }}></div> {/* Spacer para centrar el título */}
+                    <div style={{ width: '32px' }}></div>
                 </div>
             </nav>
 
@@ -123,18 +256,28 @@ export default function CerrarPagar() {
 
                 <h4 className="fw-bold text-dark mb-4 text-center">Resumen de tu parte</h4>
 
-                {/* Lista de Consumo Personal */}
-                <div className="card border-0 shadow-sm rounded-4 mb-4">
+                {/* --- 1. LISTA DE CONSUMO PERSONAL --- */}
+                <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+                    
+                    {/* Banner de Éxito si la deuda es 0 pero sí consumió algo */}
+                    {miSubtotal === 0 && miTotalOriginal > 0 && (
+                        <div className="bg-success text-white text-center py-2 fw-bold animate__animated animate__fadeIn">
+                            <span className="material-icons align-text-bottom me-1" style={{ fontSize: '18px' }}>check_circle</span>
+                            ¡Tu parte está totalmente pagada!
+                        </div>
+                    )}
+
                     <div className="card-body p-4">
                         {misItems.length === 0 ? (
                             <p className="text-center text-muted m-0">No has agregado platillos a tu cuenta.</p>
                         ) : (
-                            <ul className="list-group list-group-flush">
+                            // Si ya pagó todo, bajamos un poco la opacidad para que se vea "desactivado"
+                            <ul className="list-group list-group-flush" style={{ opacity: miSubtotal === 0 ? 0.5 : 1, transition: 'all 0.3s ease' }}>
                                 {misItems.map((item, idx) => (
                                     <li key={idx} className="list-group-item bg-transparent px-0 py-2 border-bottom-dashed d-flex justify-content-between align-items-center border-0 mb-2">
                                         <div className="d-flex align-items-center gap-3">
                                             <span className="badge bg-light text-dark border p-2 rounded-3">{item.cantidad}x</span>
-                                            <span className="fw-medium text-dark">{item.nombre}</span>
+                                            <span className="fw-medium text-dark">{item.nombre_producto}</span>
                                         </div>
                                         <span className="text-muted fw-bold">${item.costoTotal.toFixed(2)}</span>
                                     </li>
@@ -142,14 +285,121 @@ export default function CerrarPagar() {
                             </ul>
                         )}
                     </div>
-                    <div className="card-footer bg-light border-0 p-3 d-flex justify-content-between align-items-center rounded-bottom-4">
-                        <span className="fw-bold text-muted">Subtotal Consumo</span>
-                        <span className="fw-bold text-dark fs-5">${miSubtotal.toFixed(2)}</span>
+
+                    {/* Footer tipo Ticket Desglosado */}
+                    <div className="card-footer bg-light border-0 p-3 rounded-bottom-4">
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                            <span className="text-muted small">Total Consumido</span>
+                            <span className="text-muted small">${miTotalOriginal.toFixed(2)}</span>
+                        </div>
+                        
+                        {miAbono > 0 && (
+                            <div className="d-flex justify-content-between align-items-center mb-2 animate__animated animate__fadeIn">
+                                <span className="text-success small fw-bold">Abonos Realizados</span>
+                                <span className="text-success small fw-bold">-${miAbono.toFixed(2)}</span>
+                            </div>
+                        )}
+                        
+                        <div className="d-flex justify-content-between align-items-center border-top pt-2 mt-2">
+                            <span className="fw-bold text-dark">Mi Deuda Restante</span>
+                            <span className="fw-bold text-dark fs-5">${miSubtotal.toFixed(2)}</span>
+                        </div>
                     </div>
                 </div>
 
-                {/* Selector de Propina */}
-                {miSubtotal > 0 && (
+                {/* --- 2. SECCIÓN: APOYAR A LA MESA (NUEVO) --- */}
+                {vecinos.length > 0 && (
+                    <>
+                        <h4 className="fw-bold text-dark mt-5 mb-4 text-center">Apoyar a tus amigos</h4>
+                        <div className="card border-0 shadow-sm rounded-4 mb-4">
+                            <div className="card-body p-4">
+                                <ul className="list-group list-group-flush">
+                                    {vecinos.map((vecino) => {
+                                        const aportacionActual = aportaciones[vecino.id_unico] || 0;
+                                        // Calculamos el porcentaje para iluminar los botones rápidos si coinciden
+                                        const pctActual = vecino.subtotal > 0 ? (aportacionActual / vecino.subtotal) * 100 : 0;
+
+                                        return (
+                                            <li key={vecino.id_unico} className="list-group-item px-0 py-3 border-bottom-dashed border-0">
+                                                <div className="d-flex justify-content-between align-items-center mb-2">
+                                                    <div className="d-flex align-items-center gap-2">
+                                                        <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center shadow-sm" style={{ width: '35px', height: '35px' }}>
+                                                            <span className="fw-bold">{vecino.nombre.charAt(0).toUpperCase()}</span>
+                                                        </div>
+                                                        <span className="fw-bold text-dark">{vecino.nombre}</span>
+                                                    </div>
+                                                    <div className="text-end">
+                                                        <span className="text-muted small d-block" style={{ lineHeight: '1' }}>Su cuenta</span>
+                                                        <span className="text-dark fw-bold">${vecino.subtotal.toFixed(2)}</span>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* --- CONTROLES DE APORTACIÓN --- */}
+                                                <div className="mt-3 bg-light p-2 rounded-4 border">
+                                                    {/* 1. Botones Rápidos */}
+                                                    <div className="d-flex gap-2 mb-2">
+                                                        {[0, 50, 100].map(pct => (
+                                                            <button
+                                                                key={pct}
+                                                                onClick={() => handleApoyarVecino(vecino.id_unico, pct)}
+                                                                className={`btn btn-sm flex-grow-1 rounded-pill fw-bold transition-all ${pctActual === pct ? 'btn-primary shadow-sm text-white' : 'btn-outline-primary bg-white'}`}
+                                                            >
+                                                                {pct === 0 ? 'Nada' : pct === 100 ? 'Todo' : `Mitad`}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* 2. Input Personalizado */}
+                                                    <div className="input-group input-group-sm shadow-sm rounded-pill overflow-hidden border bg-white">
+                                                        <span className="input-group-text bg-transparent border-0 text-muted fw-bold ps-3">$</span>
+                                                        <input 
+                                                            type="number" 
+                                                            className="form-control border-0 shadow-none fw-bold text-primary"
+                                                            placeholder="Monto exacto a invitar..."
+                                                            value={aportacionActual > 0 ? aportacionActual : ''}
+                                                            onChange={(e) => handleMontoPersonalizado(vecino.id_unico, e.target.value, vecino.subtotal)}
+                                                            min="0"
+                                                            max={vecino.subtotal}
+                                                            step="0.01"
+                                                        />
+                                                        <button 
+                                                            className="btn btn-light border-0 text-secondary pe-3 fw-bold small bg-transparent"
+                                                            onClick={() => handleApoyarVecino(vecino.id_unico, 100)}
+                                                        >
+                                                            MAX
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Mensaje de confirmación visual */}
+                                                {aportacionActual > 0 && (
+                                                    <div className="text-end mt-2 animate__animated animate__fadeIn">
+                                                        <small className="text-success fw-bold">
+                                                            <span className="material-icons align-text-bottom me-1" style={{ fontSize: '14px' }}>favorite</span>
+                                                            Aportas: ${aportacionActual.toFixed(2)}
+                                                        </small>
+                                                    </div>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </div>
+                            
+                            {/* Resumen de aportaciones */}
+                            {totalAportaciones > 0 && (
+                                <div className="card-footer bg-success bg-opacity-10 border-0 p-3 d-flex justify-content-between align-items-center rounded-bottom-4">
+                                    <span className="fw-bold text-success">Total de tu apoyo</span>
+                                    <span className="fw-bold text-success fs-5">+ ${totalAportaciones.toFixed(2)}</span>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
+
+                {/* --- 3. SELECTOR DE PROPINA --- */}
+                {/* Nota: Ahora usamos subtotalFinal, que incluye lo tuyo + lo de tus amigos */}
+                {subtotalFinal > 0 && (
                     <div className="card border-0 shadow-sm rounded-4 mb-4">
                         <div className="card-body p-4">
                             <h6 className="fw-bold mb-3 d-flex align-items-center gap-2">
@@ -161,22 +411,22 @@ export default function CerrarPagar() {
                                     <button
                                         key={pct}
                                         onClick={() => setPropinaPct(pct)}
-                                        className={`btn flex-grow-1 rounded-3 fw-bold py-2 ${propinaPct === pct ? 'btn-dark shadow' : 'btn-outline-secondary border-1 bg-white'}`}
+                                        className={`btn flex-grow-1 rounded-3 fw-bold py-2 transition-all ${propinaPct === pct ? 'btn-dark shadow' : 'btn-outline-secondary border-1 bg-white'}`}
                                     >
                                         {pct * 100}%
                                     </button>
                                 ))}
                             </div>
                             <div className="d-flex justify-content-between mt-3 text-muted small">
-                                <span>Monto de propina:</span>
-                                <span>${montoPropina.toFixed(2)}</span>
+                                <span>Calculado sobre ${subtotalFinal.toFixed(2)}:</span>
+                                <span className="fw-bold text-dark">${montoPropina.toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* Método de Pago (Visual) */}
-                <div className="card border-0 shadow-sm rounded-4 mb-4">
+                {/* --- 4. MÉTODO DE PAGO --- */}
+                <div className="card border-0 shadow-sm rounded-4 mb-5">
                     <div className="card-body p-3 d-flex align-items-center gap-3">
                         <div className="bg-primary bg-opacity-10 p-2 rounded-3">
                             <span className="material-icons text-primary fs-3">credit_card</span>
@@ -191,7 +441,7 @@ export default function CerrarPagar() {
 
             </main>
 
-            {/* Footer Fijo con el Botón de Pago */}
+            {/* --- FOOTER FIJO --- */}
             <div className="position-fixed bottom-0 start-0 w-100 bg-white border-top shadow-lg p-3" style={{ zIndex: 1030 }}>
                 <div className="container d-flex justify-content-between align-items-center" style={{ maxWidth: '600px' }}>
                     <div>
@@ -200,7 +450,7 @@ export default function CerrarPagar() {
                     </div>
                     <button
                         onClick={handlePagar}
-                        disabled={procesando || miSubtotal === 0}
+                        disabled={procesando || subtotalFinal === 0}
                         className="btn btn-lg rounded-pill px-5 fw-bold text-white shadow d-flex align-items-center gap-2 transition-all"
                         style={{ backgroundColor: procesando ? '#95a5a6' : '#27ae60' }}
                     >

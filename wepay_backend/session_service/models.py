@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Integer
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Integer, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from database import Base
@@ -18,10 +18,16 @@ class OrdenItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sesion_id = Column(UUID(as_uuid=True), ForeignKey("sesiones_mesa.id"))
-    usuario_id = Column(UUID(as_uuid=True), nullable=False)
+    
+    # 1. Ahora es nullable=True para que acepte invitados (sin cuenta)
+    usuario_id = Column(UUID(as_uuid=True), nullable=True) 
+    
     item_menu_id = Column(UUID(as_uuid=True), nullable=False)
     cantidad = Column(Integer, default=1)
     pagado = Column(Boolean, default=False)
+    
+    # 2. Nueva columna para guardar "Paco", "Ana", etc.
+    nombre_usuario = Column(String, nullable=True)
 
 
 class MesaFisica(Base):
@@ -30,3 +36,14 @@ class MesaFisica(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     restaurante_id = Column(UUID(as_uuid=True), nullable=False) # Para saber a qué restaurante pertenece
     nombre = Column(String, nullable=False) # Ej. "1", "5", "Terraza"
+
+class AbonoSesion(Base):
+    __tablename__ = "abonos_sesion"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sesion_id = Column(UUID(as_uuid=True), ForeignKey("sesiones_mesa.id"))
+
+    # Usamos un "identificador" genérico para no complicarnos. 
+    # Aquí guardaremos el UUID del usuario o el nombre "Ana"
+    identificador = Column(String, nullable=False) 
+    monto = Column(Float, nullable=False, default=0.0)

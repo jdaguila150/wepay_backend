@@ -2,6 +2,6 @@ Si tu quieres abrir los websockets para que funcione en tiempo real la actualiza
 de cuentas; entonces necesitas descomentar las lineas de websocktes ubicadas en
 
 main.py de session_service-> ¡LA MAGIA MULTIJUGADOR!
-mesa.jsx ->// // --- 🚀 MAGIA MULTIJUGADOR: WEBSOCKETS EN LA CUENTA 🚀 ---
+cuenta.jsx ->// // --- 🚀 MAGIA MULTIJUGADOR: WEBSOCKETS EN LA CUENTA 🚀 ---
 
 aunado a que el puerto 8003 tienes que inicializarlo con uvicorn main:app --host 0.0.0.0 --port 8003 --reload

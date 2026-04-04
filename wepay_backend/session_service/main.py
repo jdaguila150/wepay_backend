@@ -134,34 +134,35 @@ def agregar_item_a_cuenta(
     if not sesion:
         raise HTTPException(status_code=404, detail="La mesa no existe o ya fue cerrada")
 
-    # 2. Guardar el pedido en PostgreSQL
+    # 2. Guardar el pedido en PostgreSQL con el nombre del invitado
     nueva_orden = models.OrdenItem(
         sesion_id=sesion_id,
-        usuario_id=pedido.usuario_id,
+        usuario_id=pedido.usuario_id, # Será None para invitados, UUID para registrados
         item_menu_id=pedido.item_menu_id,
-        cantidad=pedido.cantidad
+        cantidad=pedido.cantidad,
+        nombre_usuario=pedido.nombre_usuario # "Paco", "Ana", o None
     )
     db.add(nueva_orden)
     db.commit()
     db.refresh(nueva_orden)
 
-    # 3. Actualizar el estado en Redis (Cache para tiempo real)
-    # Aquí podríamos disparar una notificación por WebSocket en el futuro
+    # 3. Actualizar el estado en Redis
     estado_actual = redis_client.obtener_estado_mesa(str(sesion_id))
     if estado_actual:
         estado_actual["items"].append({
-            "usuario_id": str(pedido.usuario_id),
+            "usuario_id": str(pedido.usuario_id) if pedido.usuario_id else None,
+            "nombre_usuario": pedido.nombre_usuario, # Se guarda en caché
             "item_id": str(pedido.item_menu_id),
             "cantidad": pedido.cantidad
         })
         redis_client.actualizar_estado_mesa(str(sesion_id), estado_actual)
 
-    # # 4. ¡LA MAGIA MULTIJUGADOR! 
-    # # Le gritamos a todos los celulares de la mesa que recarguen sus platillos
-    # background_tasks.add_task(manager.broadcast, "actualizar_mesa", str(sesion_id))
+    # 4. Magia Multijugador
+    background_tasks.add_task(manager.broadcast, "actualizar_mesa", str(sesion_id))
 
     return nueva_orden
 
+    
 @app.get("/sesion/{sesion_id}/estado")
 def ver_estado_mesa(sesion_id: uuid.UUID, db: Session = Depends(get_db)):
     
@@ -212,40 +213,6 @@ def obtener_sesion_base(sesion_id: uuid.UUID, db: Session = Depends(get_db)):
 
 class NotificacionPago(BaseModel):
     usuario_id: uuid.UUID
-
-@app.post("/sesion/{sesion_id}/marcar-pagado")
-def webhook_marcar_pagado(sesion_id: uuid.UUID, datos: NotificacionPago, db: Session = Depends(get_db)):
-    """
-    Este endpoint es llamado internamente por el Microservicio de Pagos.
-    """
-    sesion = db.query(models.SesionMesa).filter(models.SesionMesa.id == sesion_id).first()
-    if not sesion:
-        raise HTTPException(status_code=404, detail="Mesa no encontrada")
-
-    # 1. Marcar los platillos de este usuario como pagados
-    items_del_usuario = db.query(models.OrdenItem).filter(
-        models.OrdenItem.sesion_id == sesion_id,
-        models.OrdenItem.usuario_id == datos.usuario_id,
-        models.OrdenItem.pagado == False
-    ).all()
-
-    for item in items_del_usuario:
-        setattr(item, "pagado", True)
-    db.commit()
-
-    # 2. ¿Falta alguien por pagar en toda la mesa?
-    items_pendientes = db.query(models.OrdenItem).filter(
-        models.OrdenItem.sesion_id == sesion_id,
-        models.OrdenItem.pagado == False
-    ).count()
-
-    # 3. Si todos pagaron, cerramos la mesa
-    if items_pendientes == 0:
-        setattr(sesion, "activa", False)
-        db.commit()
-        return {"mensaje": "Todos han pagado. Mesa cerrada.", "mesa_cerrada": True}
-
-    return {"mensaje": f"Pago registrado. Faltan {items_pendientes} platillos por pagar.", "mesa_cerrada": False}
 
 
 @app.get("/restaurantes/{restaurante_id}/mesas-activas")
@@ -312,3 +279,47 @@ async def obtener_mesas_fisicas(restaurante_id: str, db: Session = Depends(get_d
     ).all()
     
     return mesas
+
+
+@app.post("/sesion/{sesion_id}/marcar-pagado")
+def webhook_marcar_pagado(sesion_id: uuid.UUID, datos: schemas.NotificacionPago, db: Session = Depends(get_db)):
+    sesion = db.query(models.SesionMesa).filter(models.SesionMesa.id == sesion_id).first()
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Mesa no encontrada")
+
+    # 1. ¿Quién pagó? (UUID o Nombre)
+    identificador_pagador = str(datos.usuario_id) if datos.usuario_id else datos.nombre_usuario
+
+    # 2. GUARDAR EN POSTGRESQL (Historial inmutable)
+    if datos.abono_propio > 0:
+        db.add(models.AbonoSesion(sesion_id=sesion_id, identificador=identificador_pagador, monto=datos.abono_propio))
+        
+    if datos.aportaciones_vecinos:
+        for vecino_id, monto in datos.aportaciones_vecinos.items():
+            if monto > 0:
+                db.add(models.AbonoSesion(sesion_id=sesion_id, identificador=vecino_id, monto=monto))
+    
+    db.commit()
+
+    # 3. ACTUALIZAR REDIS (Para el Tiempo Real de React)
+    estado_actual = redis_client.obtener_estado_mesa(str(sesion_id))
+    if estado_actual:
+        # Aseguramos que exista el diccionario de abonos
+        if "abonos" not in estado_actual:
+            estado_actual["abonos"] = {}
+
+        # Sumamos el abono propio
+        if datos.abono_propio > 0:
+            actual = estado_actual["abonos"].get(identificador_pagador, 0.0)
+            estado_actual["abonos"][identificador_pagador] = actual + datos.abono_propio
+
+        # Sumamos los abonos a los vecinos
+        if datos.aportaciones_vecinos:
+            for vecino_id, monto in datos.aportaciones_vecinos.items():
+                if monto > 0:
+                    actual = estado_actual["abonos"].get(vecino_id, 0.0)
+                    estado_actual["abonos"][vecino_id] = actual + monto
+
+        redis_client.actualizar_estado_mesa(str(sesion_id), estado_actual)
+
+    return {"mensaje": "Abonos registrados exitosamente."}

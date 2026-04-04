@@ -10,10 +10,7 @@ export default function Mesa() {
     const { nombre_restaurante, id } = useParams();
     const navigate = useNavigate();
 
-    const location = useLocation();
-
-    console.log( nombre_restaurante);
-    
+    const location = useLocation();    
     
     const queryParams = new URLSearchParams(location.search);
     // Verificamos si existe el parámetro 'modo=qr'
@@ -30,50 +27,84 @@ export default function Mesa() {
 
     const [mostrarQR, setMostrarQR] = useState(false);
 
+    // --- LÓGICA HÍBRIDA (REGISTRADO VS INVITADO) ---
+    // 1. Buscamos credenciales de usuario registrado
+    const tokenRegistrado = localStorage.getItem('wepay_token'); 
+    const idRegistrado = localStorage.getItem('wepay_user_id');
+    const esUsuarioRegistrado = tokenRegistrado && idRegistrado;
+
+
+    // --- LÓGICA DE REDIRECCIÓN A LOGIN/REGISTRO ---
+    const irALogin = () => {
+        // window.location.pathname trae "/local/Tu_Restaurante/mesa/el-uuid"
+        // window.location.search trae "?modo=qr" (si existe)
+        const rutaActualCompleta = window.location.pathname + window.location.search;
+        localStorage.setItem('wepay_redirect', rutaActualCompleta);
+        navigate('/login');
+    };
+
+    const irARegistro = () => {
+        const rutaActualCompleta = window.location.pathname + window.location.search;
+        localStorage.setItem('wepay_redirect', rutaActualCompleta);
+        navigate('/registro'); // Asegúrate de que esta sea tu ruta real de registro
+    };
+
+
+    // --- LÓGICA DE INVITADO ---
+    // Revisamos si ya existe un invitado guardado en el celular de este cliente
+    const [invitado, setInvitado] = useState(() => {
+        const guardado = localStorage.getItem('wepay_invitado');
+        return guardado ? JSON.parse(guardado) : null;
+    });
+    const [nombreInput, setNombreInput] = useState('');
+
+    const handleEntrarComoInvitado = (e) => {
+        e.preventDefault();
+        if (!nombreInput.trim()) return;
+
+        // Le creamos un ID único temporal a este celular
+        const nuevoInvitado = {
+            // Usamos crypto.randomUUID() que ya viene integrado en los navegadores modernos
+            id: window.crypto.randomUUID(), 
+            nombre: nombreInput.trim()
+        };
+        
+        // Lo guardamos en el navegador para que no se lo vuelva a pedir si recarga la página
+        localStorage.setItem('wepay_invitado', JSON.stringify(nuevoInvitado));
+        setInvitado(nuevoInvitado);
+    };
+
     useEffect(() => {
+        // Ya no redirigimos al login, porque queremos que los que no tienen token 
+        // se queden aquí a ver la pantalla de "Entrar como Invitado".
         const token = localStorage.getItem('wepay_token');
-        if (!token) {
-
-
-
-            if (esModoQR) {
-                setLoading(false);
-                return; // Cortamos la ejecución aquí, no lo mandamos al login
-            }
-
-
-            const rutaActual = window.location.pathname;
-            // Solo guardamos el destino si la ruta actual contiene la palabra "mesa"
-            if (rutaActual.includes('/mesa')) {
-                localStorage.setItem('wepay_redirect', rutaActual);
-            }
-            return navigate('/login');
-        }
 
         const cargarDatosMesa = async () => {
             try {
+                // 0. Preparamos la configuración de Axios para que sea inteligente
+                const configAxios = {};
+                if (token) {
+                    configAxios.headers = { Authorization: `Bearer ${token}` };
+                }
+
                 // 1. Consultar detalles de la sesión
-                const resSesion = await api.get(`/sesiones/sesion/${id}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                // Usamos configAxios: Si hay token lo manda, si no, lo ignora.
+                const resSesion = await api.get(`/sesiones/sesion/${id}`, configAxios);
                 const datosSesion = resSesion.data;
                 setSesion(datosSesion);
 
                 // 2. Traer las CATEGORÍAS de este restaurante
-                const resCat = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/menu`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                const resCat = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/menu`, configAxios);
                 setCategorias(resCat.data);
 
                 // 3. Traer los PLATILLOS
-                const resMenu = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/items`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                const resMenu = await api.get(`/menu/restaurantes/${datosSesion.restaurante_id}/items`, configAxios);
                 setMenuItems(resMenu.data);
 
             } catch (err) {
                 console.error(err);
-                setError('No pudimos conectar con tu mesa. Verifica tu conexión.');
+                // Si el backend nos rechaza, puede ser porque la sesión no existe
+                setError('No pudimos conectar con tu mesa. Verifica tu conexión o escanea de nuevo.');
             } finally {
                 setLoading(false);
             }
@@ -81,30 +112,52 @@ export default function Mesa() {
 
         cargarDatosMesa();
 
-        
-    }, [id, navigate]);
+    }, [id]); // Quitamos 'navigate' porque ya no lo usamos en este bloque
 
     const agregarALaCuenta = async (item) => {
         setPedidoEnCurso(item.id);
         const cantidadAPedir = getCantidad(item.id);
+        
         try {
-            const token = localStorage.getItem('wepay_user_id');
+            // Preparamos las variables que van a cambiar dependiendo del tipo de cliente
+            let idUsuarioParaElPedido;
+            let nombreParaMostrar;
+            const configAxios = {};
 
-            await api.post(`/sesiones/sesion/${id}/pedir`, {
-                usuario_id: token,
+            if (esUsuarioRegistrado) {
+                // MODO CLIENTE REGISTRADO VIP
+                idUsuarioParaElPedido = idRegistrado;
+                nombreParaMostrar = "Usuario Registrado";
+                configAxios.headers = { Authorization: `Bearer ${tokenRegistrado}` };
+            } else {
+                // MODO INVITADO TEMPORAL
+                // 👇 EN LUGAR DE ENVIAR invitado.id, MANDAMOS NULL 👇
+                idUsuarioParaElPedido = null; 
+                nombreParaMostrar = invitado.nombre;
+            }
+            
+            const payload = {
+                usuario_id: idUsuarioParaElPedido,
                 item_menu_id: item.id,
-                cantidad: cantidadAPedir
-            }, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+                cantidad: cantidadAPedir,
+                nombre_usuario: esUsuarioRegistrado ? "Usuario Registrado" : invitado.nombre 
+            };
 
+            // Enviamos el pedido. axios/api automáticamente ignorará los headers si configAxios está vacío
+            await api.post(`/sesiones/sesion/${id}/pedir`, payload, configAxios);
 
-            alert(`¡${cantidadAPedir}x ${item.nombre} agregados!`);
+            alert(`¡${cantidadAPedir}x ${item.nombre} agregados a nombre de ${nombreParaMostrar}!`);
 
             setCantidades(prev => ({ ...prev, [item.id]: 1 }));
 
         } catch (err) {
-            alert('Error al agregar el producto. Intenta de nuevo.');
+            console.error("Error al pedir:", err);
+            // Pequeño truco visual para saber si falló por culpa de que expiró el token
+            if (err.response?.status === 401) {
+                alert('Tu sesión ha expirado. Por favor, vuelve a iniciar sesión o entra como invitado.');
+            } else {
+                alert('Error al agregar el producto. Intenta de nuevo.');
+            }
         } finally {
             setPedidoEnCurso(null);
         }
@@ -138,6 +191,65 @@ export default function Mesa() {
     };
 
     const getCantidad = (itemId) => cantidades[itemId] || 1;
+    // 👇 SI AÚN NO HA ESCRITO SU NOMBRE, LE MOSTRAMOS ESTA PANTALLA
+    if (!esUsuarioRegistrado && !invitado) {
+        return (
+            <div className="min-vh-100 d-flex flex-column align-items-center justify-content-center" style={{ backgroundColor: '#F8F9FA' }}>
+                <div className="card border-0 shadow-lg rounded-4 p-4 text-center" style={{ maxWidth: '400px', width: '90%', animation: 'cardFadeIn 0.3s ease-out' }}>
+                    <div className="mb-4">
+                        <span className="material-icons mb-2" style={{ fontSize: '4rem', color: '#F37A20' }}>fastfood</span>
+                        <h3 className="fw-bold text-dark">¡Bienvenido!</h3>
+                        <p className="text-muted">Estás a punto de unirte a la mesa.</p>
+                    </div>
+
+                    <form onSubmit={handleEntrarComoInvitado}>
+                        <div className="mb-3 text-start">
+                            <label className="form-label fw-bold text-secondary small">Entrar como invitado:</label>
+                            <input 
+                                type="text" 
+                                className="form-control form-control-lg bg-light border-0 shadow-sm"
+                                placeholder="Ej. Paco, Ana, Jefe..."
+                                value={nombreInput}
+                                onChange={(e) => setNombreInput(e.target.value)}
+                                autoFocus
+                                required
+                            />
+                        </div>
+                        <button 
+                            type="submit" 
+                            className="btn w-100 rounded-pill fw-bold text-white shadow-sm py-2 mb-4"
+                            style={{ backgroundColor: '#F37A20' }}
+                        >
+                            Ver Menú y Pedir
+                        </button>
+                    </form>
+
+                    {/* --- NUEVA SECCIÓN DE LOGIN / REGISTRO --- */}
+                    <div className="pt-3 border-top">
+                        <p className="text-muted small mb-3">¿Ya tienes cuenta en WePay?</p>
+                        <div className="d-flex justify-content-center gap-2">
+                            <button 
+                                type="button"
+                                onClick={irALogin}
+                                className="btn btn-sm btn-outline-primary rounded-pill px-4 fw-bold"
+                            >
+                                Iniciar Sesión
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={irARegistro}
+                                className="btn btn-sm btn-outline-secondary rounded-pill px-4 fw-bold"
+                            >
+                                Registrarse
+                            </button>
+                        </div>
+                    </div>
+                    {/* --- FIN NUEVA SECCIÓN --- */}
+
+                </div>
+            </div>
+        );
+    }
     return (
         <div className="min-vh-100 bg-light pb-5">
             {/* Navbar */}
