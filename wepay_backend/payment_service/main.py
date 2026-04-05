@@ -168,3 +168,29 @@ async def aceptar_tablas_ws(sesion_id: uuid.UUID, datos: schemas.AceptarTablas):
     # 2. Le gritamos a la mesa que los números cambiaron para que recarguen
     await manager.broadcast(json.dumps({"accion": "recargar_mesa", "mensaje": "Alguien aceptó las tablas"}), str(sesion_id))
     return {"mensaje": "Tablas aceptadas y mesa notificada"}
+
+
+@app.post("/sesion/{sesion_id}/declinar-tablas")
+async def declinar_tablas_ws(sesion_id: uuid.UUID, datos: dict):
+    
+    # 1. Le decimos a Sesiones que rompa el Post-it en Redis
+    async with httpx.AsyncClient() as client:
+        await client.post(f"http://127.0.0.1:8002/sesion/{sesion_id}/cancelar-propuesta")
+
+    # 2. Armamos el chisme
+    mensaje_ws = {
+        "accion": "propuesta_declinada",
+        "datos": {
+            "declinador_nombre": datos.get("declinador_nombre", "Un comensal"),
+            "declinador_id": datos.get("declinador_id"),
+            "creador_id": datos.get("creador_id")
+        }
+    }
+
+    # 3. Lo gritamos a todos en la mesa
+    try:
+        await manager.broadcast(json.dumps(mensaje_ws), str(sesion_id))
+        return {"mensaje": "Propuesta declinada notificada"}
+    except Exception as e:
+        print(f"Error en broadcast: {e}")
+        return {"error": "Error al notificar"}

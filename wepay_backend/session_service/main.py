@@ -380,3 +380,11 @@ def guardar_propuesta(sesion_id: uuid.UUID, propuesta: schemas.PropuestaTablas, 
         estado["propuesta_activa"] = propuesta.dict()
         redis_client.actualizar_estado_mesa(str(sesion_id), estado)
     return {"ok": True}
+
+@app.post("/sesion/{sesion_id}/cancelar-propuesta")
+def cancelar_propuesta_redis(sesion_id: uuid.UUID):
+    estado = redis_client.obtener_estado_mesa(str(sesion_id))
+    if estado and "propuesta_activa" in estado:
+        estado["propuesta_activa"] = None
+        redis_client.actualizar_estado_mesa(str(sesion_id), estado)
+    return {"ok": True}

@@ -36,6 +36,9 @@ export default function CerrarPagar() {
     // Guardará los datos de la propuesta si alguien nos invita
     const [propuestaEntrante, setPropuestaEntrante] = useState(null);
 
+    // Lista negra temporal de quienes nos rechazan ir a tablas
+    const [amigosQueDeclinaron, setAmigosQueDeclinaron] = useState([]);
+
     useEffect(() => {
         // En esta vista, sí necesitamos saber quién es el que paga. 
         // Si no es VIP ni tiene nombre temporal, lo regresamos a que se identifique.
@@ -85,8 +88,14 @@ export default function CerrarPagar() {
                     // Si un taco ya está pagado al 100%, ni siquiera lo sumamos
                     if (pedido.pagado === true) return;
 
+                    console.log("PEDIDO", pedido);
+                    
+
                     const detalleItem = menu.find(m => m.id === pedido.item_id);
-                    const costoTotal = (detalleItem?.precio || 0) * pedido.cantidad;
+                    const costoBruto = (detalleItem?.precio || 0) * pedido.cantidad;
+                    const costoTotal = Math.round(costoBruto * 100) / 100;
+                    console.log("COSTO TOTAL", costoTotal);
+                    
 
                     const itemProcesado = {
                         ...pedido,
@@ -114,6 +123,8 @@ export default function CerrarPagar() {
                             };
                         }
                         consumoVecinosTemp[keyVecino].total_consumido += costoTotal;
+                        console.log("CONSUMO VECINOS", consumoVecinosTemp);
+                        
                     }
                 });
 
@@ -176,15 +187,27 @@ export default function CerrarPagar() {
 
                 // 👇 2. NUEVA LÓGICA: Si el backend grita una propuesta de tablas...
                 else if (data.accion === "nueva_propuesta_tablas") {
-
-                    // Identificamos quién soy yo en este navegador
                     const miIdentificador = miUsuarioId || miInvitado?.nombre;
 
-                    // Si mi nombre o ID está dentro del arreglo de participantes... ¡Soy yo!
-                    if (data.datos.participantes.includes(miIdentificador)) {
+                    // Agregamos ?. por si "datos" o "participantes" no vienen en el JSON
+                    if (data.datos?.participantes?.includes(miIdentificador)) {
                         console.log("¡Me acaban de invitar a tablas!");
-                        setPropuestaEntrante(data.datos); // Disparamos el modal de sorpresa
+                        setPropuestaEntrante(data.datos); 
                     }
+                }
+
+                else if (data.accion === "propuesta_declinada") {
+                    // Agregamos un fallback a {} por si "datos" viene vacío
+                    const datos = data.datos || {};
+                    const miIdentificador = miUsuarioId || miInvitado?.nombre;
+
+                    alert(`❌ ${datos.declinador_nombre || 'Alguien'} no aceptó las tablas. La propuesta se ha cancelado.`);
+
+                    if (miIdentificador === datos.creador_id && datos.declinador_id) {
+                        setAmigosQueDeclinaron(prev => [...prev, datos.declinador_id]);
+                    }
+
+                    setPropuestaEntrante(null);
                 }
 
             } catch (error) {
@@ -211,6 +234,10 @@ export default function CerrarPagar() {
         const vecino = vecinos.find(v => v.id_unico === idVecino);
         if (!vecino) return;
         const montoAAportar = vecino.subtotal * (porcentaje / 100);
+        console.log(vecino.subtotal);
+        
+        console.log(montoAAportar);
+        
         setAportaciones(prev => ({ ...prev, [idVecino]: montoAAportar }));
     };
 
@@ -226,7 +253,7 @@ export default function CerrarPagar() {
 
         // Validaciones de seguridad: ni negativo, ni más de lo que debe el amigo
         if (monto < 0) monto = 0;
-        if (monto > maximo) monto = maximo;
+        if (monto >= maximo) monto = maximo;
 
         setAportaciones(prev => ({
             ...prev,
@@ -359,6 +386,30 @@ export default function CerrarPagar() {
         }
     };
 
+
+    const declinarTablas = async () => {
+        try {
+            const miIdentificador = miUsuarioId || miInvitado?.nombre;
+            const miNombre = miInvitado?.nombre || "Usuario Registrado";
+
+            const payload = {
+                declinador_id: miIdentificador,
+                declinador_nombre: miNombre,
+                creador_id: propuestaEntrante.creador_id
+            };
+
+            const token = localStorage.getItem('wepay_token');
+            const configAxios = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+
+            // Le avisamos al microservicio de Pagos
+            await api.post(`/pagos/sesion/${id}/declinar-tablas`, payload, configAxios);
+            
+            setPropuestaEntrante(null); // Cerramos nuestro modal
+
+        } catch (error) {
+            console.error("Error al declinar:", error);
+        }
+    };
 
 
     if (loading) {
@@ -636,20 +687,27 @@ export default function CerrarPagar() {
                                     </li>
 
                                     {/* Lista de vecinos para seleccionar */}
-                                    {vecinos.map((v, idx) => (
-                                        <li key={idx} className="list-group-item d-flex justify-content-between align-items-center cursor-pointer" onClick={() => toggleAmigoTablas(v.id_unico)}>
-                                            <div className="d-flex align-items-center gap-2">
-                                                <input
-                                                    className="form-check-input mt-0"
-                                                    type="checkbox"
-                                                    checked={amigosParaTablas.includes(v.id_unico)}
-                                                    readOnly
-                                                />
-                                                <span>{v.nombre}</span>
-                                            </div>
-                                            <span className="text-muted">${v.subtotal.toFixed(2)}</span>
-                                        </li>
-                                    ))}
+                                    {vecinos.map((v, idx) => {
+                                        const meDeclino = amigosQueDeclinaron.includes(v.id_unico);
+                                        return (
+                                            <li key={idx} 
+                                                className={`list-group-item d-flex justify-content-between align-items-center ${meDeclino ? 'bg-light text-muted' : 'cursor-pointer'}`} 
+                                                onClick={() => !meDeclino && toggleAmigoTablas(v.id_unico)}
+                                            >
+                                                <div className="d-flex align-items-center gap-2">
+                                                    <input 
+                                                        className="form-check-input mt-0" 
+                                                        type="checkbox" 
+                                                        checked={amigosParaTablas.includes(v.id_unico)}
+                                                        disabled={meDeclino} // 🚫 Lo bloqueamos
+                                                        readOnly
+                                                    />
+                                                    <span>{v.nombre} {meDeclino && "(Rechazó)"}</span>
+                                                </div>
+                                                <span className={`${meDeclino ? 'text-muted' : 'text-dark'}`}>${v.subtotal.toFixed(2)}</span>
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
 
                                 {/* Resumen Matemático */}
@@ -705,7 +763,7 @@ export default function CerrarPagar() {
                                 </button>
                                 <button 
                                     className="btn btn-outline-danger"
-                                    onClick={() => setPropuestaEntrante(null)}
+                                    onClick={declinarTablas} // 👇 AQUÍ LLAMAMOS A LA NUEVA FUNCIÓN
                                 >
                                     Declinar
                                 </button>

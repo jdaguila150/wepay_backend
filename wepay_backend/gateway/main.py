@@ -31,46 +31,54 @@ SERVICES = {
 @app.websocket("/{service}/ws/{path:path}")
 async def websocket_gateway(websocket: WebSocket, service: str, path: str):
     """
-    Atrapa peticiones como: ws://localhost:8080/pagos/ws/1234
-    Y las manda a: ws://127.0.0.1:8003/ws/1234
+    Atrapa peticiones y funciona como un túnel bidireccional real.
     """
     if service not in SERVICES:
         await websocket.close(code=4004, reason="Servicio no encontrado")
         return
 
-    await websocket.accept()
-
-    # Construimos la URL del microservicio cambiando "http" por "ws"
+    # Construimos la URL objetivo. 
+    # Asegúrate de que SERVICES["sesiones"] sea "http://localhost:8002"
     target_url = SERVICES[service].replace("http", "ws") + f"/ws/{path}"
 
+    await websocket.accept()
+
     try:
-        # Nos conectamos al microservicio real
-        async with websockets.connect(target_url) as target_ws:
+        # El Gateway se conecta como "cliente" al microservicio
+        async with websockets.connect(target_url) as backend_ws:
             
-            async def forward_to_target():
+            # Tarea 1: Leer del Frontend y enviar al Microservicio
+            async def forward_to_backend():
                 try:
                     while True:
                         data = await websocket.receive_text()
-                        await target_ws.send(data)
+                        await backend_ws.send(data)
                 except WebSocketDisconnect:
-                    pass 
+                    pass # El cliente se desconectó
 
+            # Tarea 2: Leer del Microservicio y enviar al Frontend
             async def forward_to_client():
                 try:
                     while True:
-                        data = await target_ws.recv()
+                        data = await backend_ws.recv()
                         await websocket.send_text(data)
                 except websockets.exceptions.ConnectionClosed:
-                    pass 
+                    pass # El backend cerró la conexión
 
-            # Mantenemos los dos canales escuchando simultáneamente
-            await asyncio.gather(forward_to_target(), forward_to_client())
-
+            # Ejecutamos ambos túneles al mismo tiempo
+            await asyncio.gather(
+                forward_to_backend(),
+                forward_to_client(),
+            )
+            
     except Exception as e:
-        print(f"Error en proxy WebSocket conectando a {service}: {e}")
-        if websocket.client_state == websocket.client_state.CONNECTED:
-            await websocket.close(code=1011, reason="Microservicio inalcanzable")
-
+        print(f"Error conectando al backend: {e}")
+    finally:
+        # Si algo falla o las tareas terminan, nos aseguramos de cerrar el socket del frontend
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass # Ya estaba cerrado
 
 # =====================================================================
 # 2. ENRUTADOR HTTP (Las peticiones tradicionales)

@@ -11,11 +11,11 @@ export default function Cuenta() {
     const [estadoMesa, setEstadoMesa] = useState(null);
     const [cuentasAgrupadas, setCuentasAgrupadas] = useState({});
     const [granTotal, setGranTotal] = useState(0);
-    
+
     const miUsuarioId = localStorage.getItem('wepay_user_id');
 
     const location = useLocation();
-    
+
 
     const queryParams = new URLSearchParams(location.search);
 
@@ -23,15 +23,12 @@ export default function Cuenta() {
 
 
 
-    
-    
+
+
     useEffect(() => {
         const token = localStorage.getItem('wepay_token');
-        if (!token) {
-            navigate('/login');
-            return;
-        }
-        
+
+
         const cargarCuenta = async () => {
             try {
                 // 1. Traer el estado en vivo desde Redis (Microservicio de Sesiones)
@@ -49,6 +46,7 @@ export default function Cuenta() {
 
                 // 3. Cruzar los datos y hacer las matemáticas
                 let totalMesa = 0;
+              
                 const agrupado = estado.items.reduce((acc, pedido) => {
                     // Buscar detalles del platillo
                     const detalleItem = menu.find(m => m.id === pedido.item_id);
@@ -57,24 +55,33 @@ export default function Cuenta() {
                     const subtotal = detalleItem.precio * pedido.cantidad;
                     totalMesa += subtotal;
 
-                    // Agrupar por usuario_id
-                    if (!acc[pedido.usuario_id]) {
-                        acc[pedido.usuario_id] = { total: 0, items: [] };
+                    // 👇 LA MAGIA AQUÍ: Creamos una llave inteligente
+                    const keyAgrupacion = pedido.usuario_id || pedido.nombre_usuario || 'Desconocido';
+
+                    // Agrupar usando la nueva llave
+                    if (!acc[keyAgrupacion]) {
+                        acc[keyAgrupacion] = {
+                            total: 0,
+                            items: [],
+                            // Te agrego esto por si luego ocupas pintar su nombre en un título
+                            nombre_mostrar: pedido.nombre_usuario || 'Usuario Registrado'
+                        };
                     }
-                    
-                    acc[pedido.usuario_id].items.push({
+
+                    acc[keyAgrupacion].items.push({
                         ...pedido,
                         nombre: detalleItem.nombre,
                         precio: detalleItem.precio,
                         subtotal: subtotal
                     });
-                    acc[pedido.usuario_id].total += subtotal;
+                    acc[keyAgrupacion].total += subtotal;
 
                     return acc;
                 }, {});
 
                 setCuentasAgrupadas(agrupado);
                 setGranTotal(totalMesa);
+
 
             } catch (err) {
                 console.error("Error al cargar la cuenta:", err);
@@ -88,9 +95,9 @@ export default function Cuenta() {
         cargarCuenta();
 
         // // --- 🚀 MAGIA MULTIJUGADOR: WEBSOCKETS EN LA CUENTA 🚀 ---
-        
+
         // Abrimos el túnel directo al microservicio de Sesiones (Puerto 8002)
-        const socket = new WebSocket(`ws://localhost:8080/ws/sesion/${id}`);
+        const socket = new WebSocket(`ws://localhost:8080/sesiones/ws/sesion/${id}`);
 
         socket.onopen = () => {
             console.log("🟢 Cuenta conectada en vivo a WePay");
@@ -98,19 +105,19 @@ export default function Cuenta() {
 
         socket.onmessage = (event) => {
             let accion = "";
-            
+
             // Intentamos leerlo como JSON primero
             try {
                 const data = JSON.parse(event.data);
                 accion = data.accion || data; // Por si mandas {"accion": "actualizar_mesa"}
             } catch (e) {
                 // Si explota el JSON.parse, significa que era texto puro
-                accion = event.data; 
+                accion = event.data;
             }
 
             if (accion === "actualizar_mesa" || accion === "recargar_mesa") {
                 console.log("¡Actualización detectada! Recargando la cuenta... 🧮🚀");
-                cargarCuenta(); 
+                cargarCuenta();
             }
         };
 
@@ -145,7 +152,7 @@ export default function Cuenta() {
             </nav>
 
             <main className="container py-4">
-                
+
                 {/* Tarjeta del Gran Total */}
                 <div className="card border-0 shadow-sm rounded-4 mb-4 text-center p-4 text-white" style={{ backgroundColor: '#F37A20' }}>
                     <h6 className="text-uppercase fw-bold mb-1 opacity-75">Total de la Mesa</h6>
@@ -169,12 +176,13 @@ export default function Cuenta() {
                 {/* Iteramos sobre cada usuario que ha pedido algo */}
                 <div className="row g-4">
                     {Object.entries(cuentasAgrupadas).map(([usuarioId, datos]) => {
+                        const nombreUsuario = datos.items?.[0]?.nombre_usuario || "Usuario Desconocido";
                         const esMiCuenta = usuarioId === miUsuarioId;
 
                         return (
                             <div className="col-12 col-md-6" key={usuarioId}>
                                 <div className={`card h-100 border-0 shadow-sm rounded-4 overflow-hidden ${esMiCuenta ? 'border-start border-5' : ''}`} style={{ borderColor: esMiCuenta ? '#F37A20' : 'transparent' }}>
-                                    
+
                                     <div className="card-header bg-white p-3 d-flex justify-content-between align-items-center border-bottom-0 pt-4">
                                         <div className="d-flex align-items-center gap-2">
                                             <div className={`rounded-circle d-flex align-items-center justify-content-center text-white ${esMiCuenta ? 'bg-primary' : 'bg-secondary'}`} style={{ width: '40px', height: '40px' }}>
@@ -182,9 +190,9 @@ export default function Cuenta() {
                                             </div>
                                             <div>
                                                 <h6 className="fw-bold m-0 text-dark">
-                                                    {esMiCuenta ? 'Mi Consumo' : `Comensal ${usuarioId.substring(0,4)}`}
+                                                    {esMiCuenta ? 'Mi Consumo' : `Comensal: ${nombreUsuario}`}
                                                 </h6>
-                                                {esMiCuenta && <small className="text-success fw-bold" style={{fontSize: '0.7rem'}}>TÚ</small>}
+                                                {esMiCuenta && <small className="text-success fw-bold" style={{ fontSize: '0.7rem' }}>TÚ</small>}
                                             </div>
                                         </div>
                                         <h4 className="fw-bold m-0 text-dark">${datos.total.toFixed(2)}</h4>
@@ -202,14 +210,6 @@ export default function Cuenta() {
                                             ))}
                                         </ul>
                                     </div>
-
-                                    {/* {esMiCuenta && (
-                                        <div className="card-footer bg-white border-0 p-3 pt-0">
-                                            <button className="btn w-100 rounded-pill text-white fw-bold shadow-sm" style={{ backgroundColor: '#F37A20' }}>
-                                                PAGAR MI PARTE
-                                            </button>
-                                        </div>
-                                    )} */}
                                 </div>
                             </div>
                         );
