@@ -44,6 +44,8 @@ export default function CerrarPagar() {
     const [apoyosDados, setApoyosDados] = useState([]);
     const [apoyosRecibidos, setApoyosRecibidos] = useState([]);
 
+    const [estadoMesa, setEstadoMesa] = useState(null);
+
 
     useEffect(() => {
         // En esta vista, sí necesitamos saber quién es el que paga. 
@@ -60,13 +62,15 @@ export default function CerrarPagar() {
                 const resEstado = await api.get(`/sesiones/sesion/${id}/estado`, configAxios);
                 const estado = resEstado.data;
 
+                setEstadoMesa(estado);
+
                 // 👇 NUEVO: Clasificar el historial de apoyos
                 const historial = estado.historial_apoyos || [];
                 const miIdentificador = miUsuarioId || miInvitado?.nombre;
 
                 // ¿A quién ayudé yo? (Yo soy el "de")
                 const misApoyos = historial.filter(mov => mov.de === miIdentificador);
-                
+
                 // ¿Quién me ayudó a mí? (Yo soy el "para")
                 const favoresRecibidos = historial.filter(mov => mov.para === miIdentificador);
 
@@ -105,12 +109,12 @@ export default function CerrarPagar() {
                 estado.items.forEach(pedido => {
                     // Si un taco ya está pagado al 100%, ni siquiera lo sumamos
                     if (pedido.pagado === true) return;
-                    
+
 
                     const detalleItem = menu.find(m => m.id === pedido.item_id);
                     const costoBruto = (detalleItem?.precio || 0) * pedido.cantidad;
                     const costoTotal = Math.round(costoBruto * 100) / 100;
-                    
+
 
                     const itemProcesado = {
                         ...pedido,
@@ -138,7 +142,7 @@ export default function CerrarPagar() {
                             };
                         }
                         consumoVecinosTemp[keyVecino].total_consumido += costoTotal;
-                        
+
                     }
                 });
 
@@ -206,7 +210,7 @@ export default function CerrarPagar() {
                     // Agregamos ?. por si "datos" o "participantes" no vienen en el JSON
                     if (data.datos?.participantes?.includes(miIdentificador)) {
                         console.log("¡Me acaban de invitar a tablas!");
-                        setPropuestaEntrante(data.datos); 
+                        setPropuestaEntrante(data.datos);
                     }
                 }
 
@@ -248,7 +252,7 @@ export default function CerrarPagar() {
         const vecino = vecinos.find(v => v.id_unico === idVecino);
         if (!vecino) return;
         const montoAAportar = vecino.subtotal * (porcentaje / 100);
-        
+
         setAportaciones(prev => ({ ...prev, [idVecino]: montoAAportar }));
     };
 
@@ -307,7 +311,16 @@ export default function CerrarPagar() {
             alert(mensajeFinal);
 
             // Al terminar de pagar, los regresamos a la pantalla del menú de su mesa
-            navigate(`/local/Tu_Restaurante/mesa/${id}`);
+            navigate(`/ticket`, {
+                state: {
+                    sesionId: id,
+                    nombreUsuario: miInvitado?.nombre || "Usuario Registrado",
+                    totalConsumido: miSubtotal, // Lo que costaron sus tacos
+                    totalPagado: payloadPago.monto, // Lo que realmente se cobró a la tarjeta
+                    fecha: new Date().toLocaleString()
+                }
+            });
+
 
         } catch (error) {
             alert("Hubo un error al procesar tu pago");
@@ -315,6 +328,25 @@ export default function CerrarPagar() {
         } finally {
             setProcesando(false);
         }
+    };
+
+    // --- RECUPERAR TICKET SI YA PAGÓ ---
+    const verTicketSalida = () => {
+        // 1. Identificamos quién eres
+        const miIdentificador = miUsuarioId || miInvitado?.nombre;
+
+        // 2. Leemos la verdad absoluta de nuestro Libro Mayor que acabamos de guardar
+        const loQueHePagado = estadoMesa?.abonos?.[miIdentificador] || 0;
+
+        navigate(`/ticket`, { 
+            state: {
+                sesionId: id,
+                nombreUsuario: miInvitado?.nombre || "Usuario Registrado",
+                totalConsumido: miTotalOriginal, // Lo que costaron los tacos que te comiste
+                totalPagado: loQueHePagado, // Lo que tu cartera realmente pagó (tablas, propinas, etc)
+                fecha: new Date().toLocaleString()
+            }
+        });
     };
 
 
@@ -371,7 +403,7 @@ export default function CerrarPagar() {
         try {
             const montoAceptado = propuestaEntrante.monto_por_persona;
             const miIdentificador = miUsuarioId || miInvitado?.nombre;
-            
+
             // ¿Cuánto dinero extra estoy asumiendo para ayudar a mi amigo?
             // (Si yo debía 50 y acepto 150, estoy asumiendo 100 de su deuda)
             const montoTransferido = montoAceptado - miSubtotal;
@@ -387,7 +419,7 @@ export default function CerrarPagar() {
 
             // Enviamos el "acuerdo" al microservicio de Pagos
             await api.post(`/pagos/sesion/${id}/aceptar-tablas`, payload, configAxios);
-            
+
             setPropuestaEntrante(null); // Cerramos el modal
             alert("¡Tablas aceptadas! Tu cuenta se ha ajustado.");
 
@@ -414,7 +446,7 @@ export default function CerrarPagar() {
 
             // Le avisamos al microservicio de Pagos
             await api.post(`/pagos/sesion/${id}/declinar-tablas`, payload, configAxios);
-            
+
             setPropuestaEntrante(null); // Cerramos nuestro modal
 
         } catch (error) {
@@ -506,54 +538,54 @@ export default function CerrarPagar() {
                     <>
                         <h4 className="fw-bold text-dark mt-5 mb-4 text-center">Apoyar a tus amigos</h4>
 
-                                 {/* --- 2. HISTORIAL DE APOYOS (Solo se muestra si hay movimientos) --- */}
-                {(apoyosDados.length > 0 || apoyosRecibidos.length > 0) && (
-                    <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden animate__animated animate__fadeInUp">
-                        <div className="card-header bg-white border-bottom-0 pt-4 pb-0">
-                            <h5 className="fw-bold m-0 d-flex align-items-center gap-2">
-                                <span className="material-icons text-primary">handshake</span>
-                                Resumen de Apoyos
-                            </h5>
-                        </div>
-                        <div className="card-body">
-                            
-                            {/* Lo que yo he pagado por otros */}
-                            {apoyosDados.length > 0 && (
-                                <div className="mb-3">
-                                    <p className="text-success small fw-bold mb-2">Has apoyado a:</p>
-                                    <ul className="list-group list-group-flush">
-                                        {apoyosDados.map((mov, idx) => (
-                                            <li key={idx} className="list-group-item px-0 py-1 border-0 d-flex justify-content-between align-items-center small">
-                                                <span className="text-muted">
-                                                    {mov.para} <span className="badge bg-light text-secondary ms-1">{mov.tipo}</span>
-                                                </span>
-                                                <span className="fw-medium text-success">+${mov.monto.toFixed(2)}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
+                        {/* --- 2. HISTORIAL DE APOYOS (Solo se muestra si hay movimientos) --- */}
+                        {(apoyosDados.length > 0 || apoyosRecibidos.length > 0) && (
+                            <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden animate__animated animate__fadeInUp">
+                                <div className="card-header bg-white border-bottom-0 pt-4 pb-0">
+                                    <h5 className="fw-bold m-0 d-flex align-items-center gap-2">
+                                        <span className="material-icons text-primary">handshake</span>
+                                        Resumen de Apoyos
+                                    </h5>
                                 </div>
-                            )}
+                                <div className="card-body">
 
-                            {/* Lo que otros han pagado por mí */}
-                            {apoyosRecibidos.length > 0 && (
-                                <div>
-                                    <p className="text-info small fw-bold mb-2">Te han apoyado:</p>
-                                    <ul className="list-group list-group-flush">
-                                        {apoyosRecibidos.map((mov, idx) => (
-                                            <li key={idx} className="list-group-item px-0 py-1 border-0 d-flex justify-content-between align-items-center small">
-                                                <span className="text-muted">
-                                                    {mov.de} <span className="badge bg-light text-secondary ms-1">{mov.tipo}</span>
-                                                </span>
-                                                <span className="fw-medium text-info">-${mov.monto.toFixed(2)}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
+                                    {/* Lo que yo he pagado por otros */}
+                                    {apoyosDados.length > 0 && (
+                                        <div className="mb-3">
+                                            <p className="text-success small fw-bold mb-2">Has apoyado a:</p>
+                                            <ul className="list-group list-group-flush">
+                                                {apoyosDados.map((mov, idx) => (
+                                                    <li key={idx} className="list-group-item px-0 py-1 border-0 d-flex justify-content-between align-items-center small">
+                                                        <span className="text-muted">
+                                                            {mov.para} <span className="badge bg-light text-secondary ms-1">{mov.tipo}</span>
+                                                        </span>
+                                                        <span className="fw-medium text-success">+${mov.monto.toFixed(2)}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* Lo que otros han pagado por mí */}
+                                    {apoyosRecibidos.length > 0 && (
+                                        <div>
+                                            <p className="text-info small fw-bold mb-2">Te han apoyado:</p>
+                                            <ul className="list-group list-group-flush">
+                                                {apoyosRecibidos.map((mov, idx) => (
+                                                    <li key={idx} className="list-group-item px-0 py-1 border-0 d-flex justify-content-between align-items-center small">
+                                                        <span className="text-muted">
+                                                            {mov.de} <span className="badge bg-light text-secondary ms-1">{mov.tipo}</span>
+                                                        </span>
+                                                        <span className="fw-medium text-info">-${mov.monto.toFixed(2)}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
                                 </div>
-                            )}
-
-                        </div>
-                    </div>
-                )}
+                            </div>
+                        )}
                         <div className="card border-0 shadow-sm rounded-4 mb-4">
                             <div className="card-body p-4">
                                 {/* Botón para Proponer Tablas */}
@@ -706,24 +738,39 @@ export default function CerrarPagar() {
                         <small className="text-muted d-block fw-bold mb-1">Total a Pagar</small>
                         <h3 className="fw-bold m-0 text-dark" style={{ lineHeight: '1' }}>${totalAPagar.toFixed(2)}</h3>
                     </div>
-                    <button
-                        onClick={handlePagar}
-                        disabled={procesando || subtotalFinal === 0}
-                        className="btn btn-lg rounded-pill px-5 fw-bold text-white shadow d-flex align-items-center gap-2 transition-all"
-                        style={{ backgroundColor: procesando ? '#95a5a6' : '#27ae60' }}
-                    >
-                        {procesando ? (
-                            <>
-                                <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                Procesando...
-                            </>
-                        ) : (
-                            <>
-                                <span className="material-icons">lock</span>
-                                PAGAR
-                            </>
-                        )}
-                    </button>
+
+                    {/* --- LÓGICA DEL BOTÓN INTELIGENTE --- */}
+                    {subtotalFinal > 0 ? (
+                        /* Botón de Pagar (Si aún hay deuda) */
+                        <button
+                            onClick={handlePagar}
+                            disabled={procesando}
+                            className="btn btn-lg rounded-pill px-5 fw-bold text-white shadow d-flex align-items-center gap-2 transition-all"
+                            style={{ backgroundColor: procesando ? '#95a5a6' : '#27ae60' }}
+                        >
+                            {procesando ? (
+                                <>
+                                    <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    Procesando...
+                                </>
+                            ) : (
+                                <>
+                                    <span className="material-icons">lock</span>
+                                    PAGAR
+                                </>
+                            )}
+                        </button>
+                    ) : (
+                        /* Botón de QR de Salida (Si la deuda es 0) */
+                        <button
+                            onClick={verTicketSalida}
+                            className="btn btn-lg rounded-pill px-4 fw-bold text-white shadow d-flex align-items-center gap-2 transition-all"
+                            style={{ backgroundColor: '#0d6efd' }} // Azul elegante para diferenciarlo del cobro
+                        >
+                            <span className="material-icons">qr_code_2</span>
+                            QR SALIDA
+                        </button>
+                    )}
                 </div>
             </div>
             {/* --- MODAL PARA PROPONER TABLAS --- */}
@@ -752,14 +799,14 @@ export default function CerrarPagar() {
                                     {vecinos.map((v, idx) => {
                                         const meDeclino = amigosQueDeclinaron.includes(v.id_unico);
                                         return (
-                                            <li key={idx} 
-                                                className={`list-group-item d-flex justify-content-between align-items-center ${meDeclino ? 'bg-light text-muted' : 'cursor-pointer'}`} 
+                                            <li key={idx}
+                                                className={`list-group-item d-flex justify-content-between align-items-center ${meDeclino ? 'bg-light text-muted' : 'cursor-pointer'}`}
                                                 onClick={() => !meDeclino && toggleAmigoTablas(v.id_unico)}
                                             >
                                                 <div className="d-flex align-items-center gap-2">
-                                                    <input 
-                                                        className="form-check-input mt-0" 
-                                                        type="checkbox" 
+                                                    <input
+                                                        className="form-check-input mt-0"
+                                                        type="checkbox"
                                                         checked={amigosParaTablas.includes(v.id_unico)}
                                                         disabled={meDeclino} // 🚫 Lo bloqueamos
                                                         readOnly
@@ -817,13 +864,13 @@ export default function CerrarPagar() {
                             </div>
 
                             <div className="d-grid gap-2">
-                                <button 
+                                <button
                                     className="btn btn-success fw-bold py-2"
                                     onClick={aceptarTablas}
                                 >
                                     ¡Sí, acepto!
                                 </button>
-                                <button 
+                                <button
                                     className="btn btn-outline-danger"
                                     onClick={declinarTablas} // 👇 AQUÍ LLAMAMOS A LA NUEVA FUNCIÓN
                                 >

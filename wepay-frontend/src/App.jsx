@@ -7,6 +7,7 @@ import Mesa from './components/Mesa';
 import Cuenta from './components/Cuenta';
 import CerrarPagar from './components/CerrarPagar';
 import PuertaFisica from './components/PuertaFisica';
+import TicketSalida from './components/TicketSalida';
 
 
 // Un componente temporal para cuando el login sea exitoso
@@ -27,10 +28,10 @@ function App() {
 
         {/* Redirigir la raíz al login */}
         <Route path="/" element={<Navigate to="/login" replace />} />
-        
+
         {/* Ruta del Login */}
         <Route path="/login" element={<Login />} />
-        
+
         {/* Ruta de registro */}
         <Route path="/registro" element={<Registro />} />
 
@@ -49,6 +50,8 @@ function App() {
 
         <Route path="/local/:nombre_restaurante/id/:restaurante_id/mesa_fisica/:numero_mesa" element={<PuertaFisica />} />
 
+
+        <Route path="/ticket" element={<TicketSalida />} />
 
       </Routes>
     </BrowserRouter>
