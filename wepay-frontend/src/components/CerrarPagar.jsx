@@ -39,6 +39,12 @@ export default function CerrarPagar() {
     // Lista negra temporal de quienes nos rechazan ir a tablas
     const [amigosQueDeclinaron, setAmigosQueDeclinaron] = useState([]);
 
+
+    // Estados para el historial de favores
+    const [apoyosDados, setApoyosDados] = useState([]);
+    const [apoyosRecibidos, setApoyosRecibidos] = useState([]);
+
+
     useEffect(() => {
         // En esta vista, sí necesitamos saber quién es el que paga. 
         // Si no es VIP ni tiene nombre temporal, lo regresamos a que se identifique.
@@ -53,6 +59,19 @@ export default function CerrarPagar() {
                 // 1. Traemos el estado de la mesa y el menú
                 const resEstado = await api.get(`/sesiones/sesion/${id}/estado`, configAxios);
                 const estado = resEstado.data;
+
+                // 👇 NUEVO: Clasificar el historial de apoyos
+                const historial = estado.historial_apoyos || [];
+                const miIdentificador = miUsuarioId || miInvitado?.nombre;
+
+                // ¿A quién ayudé yo? (Yo soy el "de")
+                const misApoyos = historial.filter(mov => mov.de === miIdentificador);
+                
+                // ¿Quién me ayudó a mí? (Yo soy el "para")
+                const favoresRecibidos = historial.filter(mov => mov.para === miIdentificador);
+
+                setApoyosDados(misApoyos);
+                setApoyosRecibidos(favoresRecibidos);
 
                 // Revisar si hay un "Post-it" de propuesta pendiente
                 if (estado.propuesta_activa) {
@@ -77,7 +96,6 @@ export default function CerrarPagar() {
 
                 // 👇 1. Preparación de variables y lectura de abonos
                 const abonosMesa = estado.abonos || {};
-                const miIdentificador = miUsuarioId || miInvitado?.nombre;
 
                 let miSub = 0;
                 const misPedidosTemp = [];
@@ -87,14 +105,11 @@ export default function CerrarPagar() {
                 estado.items.forEach(pedido => {
                     // Si un taco ya está pagado al 100%, ni siquiera lo sumamos
                     if (pedido.pagado === true) return;
-
-                    console.log("PEDIDO", pedido);
                     
 
                     const detalleItem = menu.find(m => m.id === pedido.item_id);
                     const costoBruto = (detalleItem?.precio || 0) * pedido.cantidad;
                     const costoTotal = Math.round(costoBruto * 100) / 100;
-                    console.log("COSTO TOTAL", costoTotal);
                     
 
                     const itemProcesado = {
@@ -123,7 +138,6 @@ export default function CerrarPagar() {
                             };
                         }
                         consumoVecinosTemp[keyVecino].total_consumido += costoTotal;
-                        console.log("CONSUMO VECINOS", consumoVecinosTemp);
                         
                     }
                 });
@@ -234,9 +248,6 @@ export default function CerrarPagar() {
         const vecino = vecinos.find(v => v.id_unico === idVecino);
         if (!vecino) return;
         const montoAAportar = vecino.subtotal * (porcentaje / 100);
-        console.log(vecino.subtotal);
-        
-        console.log(montoAAportar);
         
         setAportaciones(prev => ({ ...prev, [idVecino]: montoAAportar }));
     };
@@ -448,6 +459,8 @@ export default function CerrarPagar() {
                         </div>
                     )}
 
+
+
                     <div className="card-body p-4">
                         {misItems.length === 0 ? (
                             <p className="text-center text-muted m-0">No has agregado platillos a tu cuenta.</p>
@@ -492,6 +505,55 @@ export default function CerrarPagar() {
                 {vecinos.length > 0 && (
                     <>
                         <h4 className="fw-bold text-dark mt-5 mb-4 text-center">Apoyar a tus amigos</h4>
+
+                                 {/* --- 2. HISTORIAL DE APOYOS (Solo se muestra si hay movimientos) --- */}
+                {(apoyosDados.length > 0 || apoyosRecibidos.length > 0) && (
+                    <div className="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden animate__animated animate__fadeInUp">
+                        <div className="card-header bg-white border-bottom-0 pt-4 pb-0">
+                            <h5 className="fw-bold m-0 d-flex align-items-center gap-2">
+                                <span className="material-icons text-primary">handshake</span>
+                                Resumen de Apoyos
+                            </h5>
+                        </div>
+                        <div className="card-body">
+                            
+                            {/* Lo que yo he pagado por otros */}
+                            {apoyosDados.length > 0 && (
+                                <div className="mb-3">
+                                    <p className="text-success small fw-bold mb-2">Has apoyado a:</p>
+                                    <ul className="list-group list-group-flush">
+                                        {apoyosDados.map((mov, idx) => (
+                                            <li key={idx} className="list-group-item px-0 py-1 border-0 d-flex justify-content-between align-items-center small">
+                                                <span className="text-muted">
+                                                    {mov.para} <span className="badge bg-light text-secondary ms-1">{mov.tipo}</span>
+                                                </span>
+                                                <span className="fw-medium text-success">+${mov.monto.toFixed(2)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* Lo que otros han pagado por mí */}
+                            {apoyosRecibidos.length > 0 && (
+                                <div>
+                                    <p className="text-info small fw-bold mb-2">Te han apoyado:</p>
+                                    <ul className="list-group list-group-flush">
+                                        {apoyosRecibidos.map((mov, idx) => (
+                                            <li key={idx} className="list-group-item px-0 py-1 border-0 d-flex justify-content-between align-items-center small">
+                                                <span className="text-muted">
+                                                    {mov.de} <span className="badge bg-light text-secondary ms-1">{mov.tipo}</span>
+                                                </span>
+                                                <span className="fw-medium text-info">-${mov.monto.toFixed(2)}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                        </div>
+                    </div>
+                )}
                         <div className="card border-0 shadow-sm rounded-4 mb-4">
                             <div className="card-body p-4">
                                 {/* Botón para Proponer Tablas */}

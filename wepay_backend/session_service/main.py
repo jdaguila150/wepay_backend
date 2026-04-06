@@ -284,7 +284,6 @@ async def obtener_mesas_fisicas(restaurante_id: str, db: Session = Depends(get_d
     
     return mesas
 
-
 @app.post("/sesion/{sesion_id}/marcar-pagado")
 def webhook_marcar_pagado(sesion_id: uuid.UUID, datos: schemas.NotificacionPago, db: Session = Depends(get_db)):
     sesion = db.query(models.SesionMesa).filter(models.SesionMesa.id == sesion_id).first()
@@ -324,10 +323,20 @@ def webhook_marcar_pagado(sesion_id: uuid.UUID, datos: schemas.NotificacionPago,
                     actual = estado_actual["abonos"].get(vecino_id, 0.0)
                     estado_actual["abonos"][vecino_id] = actual + monto
 
+                    # 👇 NUEVO: Escribimos en el Diario de Apoyos (Pago Directo)
+                    if "historial_apoyos" not in estado_actual:
+                        estado_actual["historial_apoyos"] = []
+                        
+                    estado_actual["historial_apoyos"].append({
+                        "de": identificador_pagador,
+                        "para": vecino_id,
+                        "monto": monto,
+                        "tipo": "pago_directo"
+                    })
+
         redis_client.actualizar_estado_mesa(str(sesion_id), estado_actual)
 
     return {"mensaje": "Abonos registrados exitosamente."}
-
 
 
 @app.post("/sesion/{sesion_id}/registrar-transferencia")
@@ -353,7 +362,18 @@ def registrar_transferencia(sesion_id: uuid.UUID, datos: schemas.AceptarTablas, 
         actual_creador = estado["abonos"].get(datos.creador_id, 0.0)
         estado["abonos"][datos.creador_id] = actual_creador + datos.monto_transferido
         
-        # 👇 NUEVO: Romper el Post-it para el usuario que ya aceptó
+        # 👇 NUEVO: Escribimos en el Diario de Apoyos (Tablas)
+        if "historial_apoyos" not in estado:
+            estado["historial_apoyos"] = []
+            
+        estado["historial_apoyos"].append({
+            "de": datos.aceptador_id,
+            "para": datos.creador_id,
+            "monto": datos.monto_transferido,
+            "tipo": "tablas"
+        })
+        
+        # Romper el Post-it para el usuario que ya aceptó
         if "propuesta_activa" in estado and estado["propuesta_activa"]:
             participantes = estado["propuesta_activa"].get("participantes", [])
             
@@ -370,7 +390,6 @@ def registrar_transferencia(sesion_id: uuid.UUID, datos: schemas.AceptarTablas, 
         redis_client.actualizar_estado_mesa(str(sesion_id), estado)
         
     return {"ok": True}
-
 
 @app.post("/sesion/{sesion_id}/guardar-propuesta")
 def guardar_propuesta(sesion_id: uuid.UUID, propuesta: schemas.PropuestaTablas, db: Session = Depends(get_db)):

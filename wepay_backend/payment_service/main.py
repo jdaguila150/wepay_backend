@@ -77,7 +77,7 @@ def calcular_division(datos: schemas.DivisionCuenta):
 @app.post("/procesar")
 async def procesar_pago(
     pago: schemas.PagoCreate, 
-    background_tasks: BackgroundTasks, # <- ¡Inyectamos las tareas en segundo plano!
+    background_tasks: BackgroundTasks, 
     db: Session = Depends(get_db)
 ):
     """
@@ -86,7 +86,7 @@ async def procesar_pago(
     # 1. Guardar en tu base de datos de Pagos
     nuevo_pago = models.Pago(
         sesion_id=pago.sesion_id,
-        usuario_id=pago.usuario_id, # Puede ser null si es invitado
+        usuario_id=pago.usuario_id, 
         monto=pago.monto,
         metodo_pago=pago.metodo_pago,
         completado=True 
@@ -95,42 +95,46 @@ async def procesar_pago(
     db.commit()
     db.refresh(nuevo_pago)
     
-    # 2. Lógica de negocio: Avisar a Sesiones (¡Ahora con las aportaciones!)
+    # 2. Lógica de negocio: Avisar a Sesiones 
     estado_mesa = {}
     async with httpx.AsyncClient() as client:
         try:
             respuesta = await client.post(
                 f"http://localhost:8080/sesiones/sesion/{pago.sesion_id}/marcar-pagado",
                 json={
-                    # Mandamos el usuario_id si existe, si no mandamos null
                     "usuario_id": str(pago.usuario_id) if pago.usuario_id else None,
                     "nombre_usuario": pago.nombre_usuario,
                     "abono_propio": pago.abono_propio,
-                    # Le pasamos a Sesiones el chisme de a quién apoyamos para que lo descuente
                     "aportaciones_vecinos": pago.aportaciones_vecinos 
                 }
             )
-            estado_mesa = respuesta.json()
+            # Validamos que no explote si el otro servicio no devuelve JSON
+            if respuesta.status_code == 200:
+                estado_mesa = respuesta.json()
+            else:
+                estado_mesa = {"error": f"Sesiones devolvió error {respuesta.status_code}"}
+                
         except Exception as e:
-            estado_mesa = {"error": "Pago cobrado, pero no se pudo notificar a Sesiones", "detalle": str(e)}
+            estado_mesa = {"error": "No se pudo notificar a Sesiones", "detalle": str(e)}
     
     # 3. ¡LA MAGIA DEL TIEMPO REAL!
-    # Le gritamos a la mesa que alguien pagó, sin hacer esperar la respuesta del HTTP
     mensaje_ws = json.dumps({
         "accion": "recargar_mesa",
         "mensaje": f"¡{pago.nombre_usuario or 'Un usuario'} ha realizado un pago!"
     })
     background_tasks.add_task(manager.broadcast, mensaje_ws, str(pago.sesion_id))
 
+    # 👇 EL FIX ESTÁ AQUÍ: Forzamos la conversión a str y float 👇
     return {
         "pago": {
-            "id": nuevo_pago.id,
-            "monto": nuevo_pago.monto,
-            "completado": nuevo_pago.completado
+            "id": str(nuevo_pago.id),         # Evita el error de "UUID not serializable"
+            "monto": float(nuevo_pago.monto), # Evita el error de "Decimal not serializable" # type: ignore
+            "completado": bool(nuevo_pago.completado)
         },
         "estado_sesion": estado_mesa
     }
 
+    
 
 @app.post("/sesion/{sesion_id}/proponer-tablas")
 async def proponer_tablas_endpoint(sesion_id: uuid.UUID, propuesta: schemas.PropuestaTablas):
