@@ -21,6 +21,7 @@ export default function CerrarPagar() {
     const [aportaciones, setAportaciones] = useState({}); // Guardará: { "id_paco": 150.50 }
 
     const [propinaPct, setPropinaPct] = useState(0.10);
+    const [propinaPersonalizada, setPropinaPersonalizada] = useState('');
     const [procesando, setProcesando] = useState(false);
 
     // Lógica Híbrida: Saber quién soy yo (VIP o Invitado)
@@ -282,7 +283,10 @@ export default function CerrarPagar() {
 
     // Mi cuenta + Lo que le invito a los demás
     const subtotalFinal = miSubtotal + totalAportaciones;
-    const montoPropina = subtotalFinal * propinaPct;
+    // const montoPropina = subtotalFinal * propinaPct;
+    const montoPropina = propinaPct === 'custom' 
+        ? (parseFloat(propinaPersonalizada) || 0) 
+        : (subtotalFinal * propinaPct);
     const totalAPagar = subtotalFinal + montoPropina;
 
     const handlePagar = async () => {
@@ -696,19 +700,50 @@ export default function CerrarPagar() {
                                 <span className="material-icons text-warning">volunteer_activism</span>
                                 Agregar Propina
                             </h6>
-                            <div className="d-flex gap-2">
-                                {[0.10, 0.15, 0.20].map((pct) => (
+                            
+                            {/* Botones de Porcentaje y "Otro" */}
+                            <div className="d-flex flex-wrap gap-2 mb-3">
+                                {[0, 0.10, 0.15, 0.20].map((pct) => (
                                     <button
                                         key={pct}
-                                        onClick={() => setPropinaPct(pct)}
+                                        onClick={() => {
+                                            setPropinaPct(pct);
+                                            setPropinaPersonalizada(''); // Limpiamos el input por si acaso
+                                        }}
                                         className={`btn flex-grow-1 rounded-3 fw-bold py-2 transition-all ${propinaPct === pct ? 'btn-dark shadow' : 'btn-outline-secondary border-1 bg-white'}`}
                                     >
                                         {pct * 100}%
                                     </button>
                                 ))}
+                                {/* 👇 NUEVO: Botón de Propina Personalizada 👇 */}
+                                <button
+                                    onClick={() => setPropinaPct('custom')}
+                                    className={`btn flex-grow-1 rounded-3 fw-bold py-2 transition-all ${propinaPct === 'custom' ? 'btn-dark shadow' : 'btn-outline-secondary border-1 bg-white'}`}
+                                >
+                                    Otro
+                                </button>
                             </div>
-                            <div className="d-flex justify-content-between mt-3 text-muted small">
-                                <span>Calculado sobre ${subtotalFinal.toFixed(2)}:</span>
+
+                            {/* 👇 NUEVO: Input que solo aparece si eligen "Otro" 👇 */}
+                            {propinaPct === 'custom' && (
+                                <div className="input-group mb-3 animate__animated animate__fadeIn">
+                                    <span className="input-group-text bg-light border-end-0 text-muted">$</span>
+                                    <input
+                                        type="number"
+                                        className="form-control border-start-0 ps-0 fw-bold"
+                                        placeholder="Ingresa la cantidad (Ej. 50)"
+                                        min="0"
+                                        step="1"
+                                        value={propinaPersonalizada}
+                                        onChange={(e) => setPropinaPersonalizada(e.target.value)}
+                                        autoFocus
+                                    />
+                                </div>
+                            )}
+
+                            {/* Resumen dinámico del cálculo */}
+                            <div className="d-flex justify-content-between mt-2 text-muted small border-top pt-3">
+                                <span>{propinaPct === 'custom' ? 'Propina manual:' : `Calculado sobre $${subtotalFinal.toFixed(2)}:`}</span>
                                 <span className="fw-bold text-dark">${montoPropina.toFixed(2)}</span>
                             </div>
                         </div>
