@@ -189,6 +189,47 @@ export default function Menu() {
                                     // Construimos la URL
                                     const urlFisica = `${window.location.origin}/local/${nombreRestauranteURL}/id/${restauranteParaQR.id}/mesa_fisica/${nombreMesaURL}`;
 
+
+                                    const descargarQR = (idMesa, nombreMesa) => {
+                                        const qrElement = document.getElementById(`qr-${idMesa}`);
+                                        if (!qrElement) return;
+
+                                        // Comprobamos si la librería renderizó un SVG o un Canvas
+                                        if (qrElement.nodeName.toLowerCase() === 'svg') {
+                                            const svgData = new XMLSerializer().serializeToString(qrElement);
+                                            const canvas = document.createElement("canvas");
+                                            const ctx = canvas.getContext("2d");
+                                            const img = new Image();
+
+                                            // Hacemos el canvas más grande para que la descarga tenga excelente calidad de impresión
+                                            const scale = 5;
+                                            canvas.width = 120 * scale;
+                                            canvas.height = 120 * scale;
+
+                                            img.onload = () => {
+                                                // Le ponemos un fondo blanco (si no, el PNG sale transparente y puede verse mal al imprimir)
+                                                ctx.fillStyle = "white";
+                                                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                                                const pngUrl = canvas.toDataURL("image/png");
+                                                const downloadLink = document.createElement("a");
+                                                downloadLink.href = pngUrl;
+                                                downloadLink.download = `QR_Mesa_${nombreMesa}.png`;
+                                                downloadLink.click();
+                                            };
+                                            img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData)));
+
+                                        } else if (qrElement.nodeName.toLowerCase() === 'canvas') {
+                                            const pngUrl = qrElement.toDataURL("image/png");
+                                            const downloadLink = document.createElement("a");
+                                            downloadLink.href = pngUrl;
+                                            downloadLink.download = `QR_Mesa_${nombreMesa}.png`;
+                                            downloadLink.click();
+                                        }
+                                    };
+
+
                                     return (
                                         <div className="col-12 col-sm-6 col-md-4 text-center" key={mesa.id}>
                                             <div className="border rounded-4 p-3 bg-light h-100 d-flex flex-column align-items-center justify-content-between">
@@ -197,13 +238,17 @@ export default function Menu() {
 
                                                     <div className="bg-white p-2 rounded mb-3 shadow-sm d-inline-block">
                                                         <QRCode
+                                                            id={`qr-${mesa.id}`} // 👇 NUEVO: Identificador único
                                                             value={urlFisica}
                                                             size={120}
                                                             fgColor="#2c3e50"
                                                         />
                                                     </div>
 
-                                                    <button className="btn btn-sm btn-outline-primary rounded-pill w-100 mb-3">
+                                                    <button 
+                                                        className="btn btn-sm btn-outline-primary rounded-pill w-100 mb-3"
+                                                        onClick={() => descargarQR(mesa.id, mesa.nombre)} // 👇 NUEVO: Acción de descarga
+                                                    >
                                                         <span className="material-icons fs-6 align-text-bottom me-1">download</span>
                                                         Descargar
                                                     </button>
