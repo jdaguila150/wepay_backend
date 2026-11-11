@@ -94,10 +94,11 @@ export default function Cuenta() {
         // Carga inicial al abrir la pantalla
         cargarCuenta();
 
-        // // --- 🚀 MAGIA MULTIJUGADOR: WEBSOCKETS EN LA CUENTA 🚀 ---
+        // --- 🚀 MAGIA MULTIJUGADOR: WEBSOCKETS EN LA CUENTA 🚀 ---
 
-        // Abrimos el túnel directo al microservicio de Sesiones (Puerto 8002)
-        const socket = new WebSocket(`ws://localhost:8080/sesiones/ws/sesion/${id}`);
+        // Abrimos el túnel directo al microservicio de Sesiones (a través del Gateway 8080)
+        const wsHost = window.location.hostname || 'localhost';
+        const socket = new WebSocket(`ws://${wsHost}:8080/sesiones/ws/sesion/${id}`);
 
         socket.onopen = () => {
             console.log("🟢 Cuenta conectada en vivo a WePay");

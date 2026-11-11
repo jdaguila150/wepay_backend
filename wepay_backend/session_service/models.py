@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Integer, Float
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
 
@@ -12,6 +13,8 @@ class SesionMesa(Base):
     numero_mesa = Column(String, nullable=False)
     activa = Column(Boolean, default=True)
     creada_en = Column(DateTime(timezone=True), server_default=func.now())
+
+    ordenes = relationship("OrdenItem", back_populates="sesion")
 
 class OrdenItem(Base):
     __tablename__ = "ordenes_items"
@@ -28,6 +31,14 @@ class OrdenItem(Base):
     
     # 2. Nueva columna para guardar "Paco", "Ana", etc.
     nombre_usuario = Column(String, nullable=True)
+
+    # 3. Estado de la orden ('pendiente', 'preparando', 'lista', 'entregada')
+    estado = Column(String, default="pendiente", nullable=False)
+    nombre_item = Column(String, nullable=True)
+    notas = Column(String, nullable=True)
+    creado_en = Column(DateTime(timezone=True), server_default=func.now())
+
+    sesion = relationship("SesionMesa", back_populates="ordenes")
 
 
 class MesaFisica(Base):

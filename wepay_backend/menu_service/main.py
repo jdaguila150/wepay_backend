@@ -126,7 +126,14 @@ def borrar_restaurante(restaurante_id: uuid.UUID, db: Session = Depends(get_db))
     db.commit()
     return {"message": "Restaurante y todo su menú eliminados correctamente"}
 
-# --- ACTUALIZAR PRECIO O DISPONIBILIDAD DE ÍTEM ---
+# --- CONSULTAR, ACTUALIZAR PRECIO O DISPONIBILIDAD DE ÍTEM ---
+
+@app.get("/items/{item_id}", response_model=schemas.ItemResponse)
+def obtener_item(item_id: uuid.UUID, db: Session = Depends(get_db)):
+    db_item = db.query(models.ItemMenu).filter(models.ItemMenu.id == item_id).first()
+    if not db_item:
+        raise HTTPException(status_code=404, detail="Platillo no encontrado")
+    return db_item
 
 @app.patch("/items/{item_id}", response_model=schemas.ItemResponse)
 def actualizar_item(item_id: uuid.UUID, item_data: schemas.ItemUpdate, db: Session = Depends(get_db)):

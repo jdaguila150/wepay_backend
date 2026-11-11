@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, BackgroundTasks, Query
 from sqlalchemy.orm import Session
-from typing import Dict, List
+from typing import Dict, List, Optional
 import uuid
 import json
+import httpx
 
 from database import engine, get_db
 import models, schemas, redis_client
@@ -66,7 +67,7 @@ async def verificar_o_crear_mesa_fisica(datos: schemas.VerificarMesaFisica, db: 
 # --- MANEJADOR DE WEBSOCKETS ---
 class ConnectionManager:
     def __init__(self):
-        # Guardaremos las conexiones así: {"id_de_la_mesa": [celular1, celular2, ...]}
+        # Guardaremos las conexiones así: {"id_de_la_mesa": [celular1, ...], "cocina": [pantalla1, ...]}
         self.active_connections: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, sesion_id: str):
@@ -77,17 +78,31 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket, sesion_id: str):
         if sesion_id in self.active_connections:
-            self.active_connections[sesion_id].remove(websocket)
+            if websocket in self.active_connections[sesion_id]:
+                self.active_connections[sesion_id].remove(websocket)
             if not self.active_connections[sesion_id]:
                 del self.active_connections[sesion_id]
 
     async def broadcast(self, message: str, sesion_id: str):
-        # Si hay celulares conectados a esta mesa, les mandamos el mensaje a todos
+        # Envía el mensaje a todas las conexiones activas en la sala (mesa o cocina)
         if sesion_id in self.active_connections:
-            for connection in self.active_connections[sesion_id]:
-                await connection.send_text(message)
+            for connection in list(self.active_connections[sesion_id]):
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    self.disconnect(connection, sesion_id)
 
 manager = ConnectionManager()
+
+@app.websocket("/ws/cocina")
+async def websocket_cocina(websocket: WebSocket):
+    await manager.connect(websocket, "cocina")
+    try:
+        while True:
+            # Mantener conexión viva y escuchar mensajes si los hubiera
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "cocina")
 
 @app.websocket("/ws/sesion/{sesion_id}")
 async def websocket_mesa(websocket: WebSocket, sesion_id: str):
@@ -135,13 +150,29 @@ def agregar_item_a_cuenta(
     if not sesion:
         raise HTTPException(status_code=404, detail="La mesa no existe o ya fue cerrada")
 
+    # 1b. Resolver nombre del ítem si no se proveyó
+    nombre_item = pedido.nombre_item
+    if not nombre_item:
+        try:
+            with httpx.Client(timeout=1.0) as client:
+                resp = client.get(f"http://127.0.0.1:8000/items/{pedido.item_menu_id}")
+                if resp.status_code == 200:
+                    nombre_item = resp.json().get("nombre")
+        except Exception:
+            pass
+    if not nombre_item:
+        nombre_item = f"Platillo #{str(pedido.item_menu_id)[:8]}"
+
     # 2. Guardar el pedido en PostgreSQL con el nombre del invitado
     nueva_orden = models.OrdenItem(
         sesion_id=sesion_id,
-        usuario_id=pedido.usuario_id, # Será None para invitados, UUID para registrados
+        usuario_id=pedido.usuario_id, 
         item_menu_id=pedido.item_menu_id,
         cantidad=pedido.cantidad,
-        nombre_usuario=pedido.nombre_usuario # "Paco", "Ana", o None
+        nombre_usuario=pedido.nombre_usuario,
+        nombre_item=nombre_item,
+        notas=pedido.notas,
+        estado=pedido.estado or "pendiente"
     )
     db.add(nueva_orden)
     db.commit()
@@ -150,22 +181,154 @@ def agregar_item_a_cuenta(
     # 3. Actualizar el estado en Redis
     estado_actual = redis_client.obtener_estado_mesa(str(sesion_id))
     if estado_actual:
-        # 👇 NUEVO: Destruimos la propuesta activa (si la hay) porque las matemáticas cambiaron 👇
         if estado_actual.get("propuesta_activa"):
             estado_actual["propuesta_activa"] = None
 
         estado_actual["items"].append({
             "usuario_id": str(pedido.usuario_id) if pedido.usuario_id else None,
-            "nombre_usuario": pedido.nombre_usuario, # Se guarda en caché
+            "nombre_usuario": pedido.nombre_usuario, 
             "item_id": str(pedido.item_menu_id),
-            "cantidad": pedido.cantidad
+            "nombre_item": nombre_item,
+            "cantidad": pedido.cantidad,
+            "estado": nueva_orden.estado
         })
         redis_client.actualizar_estado_mesa(str(sesion_id), estado_actual)
 
     # 4. Magia Multijugador
+    # Avisamos a los comensales
     background_tasks.add_task(manager.broadcast, "actualizar_mesa", str(sesion_id))
+    
+    # 👇 NUEVO: Le gritamos a la cocina que prepare el pedido 👇
+    mensaje_cocina = json.dumps({
+        "accion": "nueva_comanda",
+        "pedido": {
+            "id": str(nueva_orden.id),
+            "mesa_id": sesion.numero_mesa,
+            "numero_mesa": sesion.numero_mesa,
+            "item_menu_id": str(nueva_orden.item_menu_id),
+            "nombre_item": nombre_item,
+            "cantidad": nueva_orden.cantidad,
+            "nombre_usuario": nueva_orden.nombre_usuario or "Invitado",
+            "notas": nueva_orden.notas,
+            "estado": nueva_orden.estado,
+            "creado_en": nueva_orden.creado_en.isoformat() if nueva_orden.creado_en else None
+        }
+    })
+    # Asumimos que tienes una "sala" o canal de WebSocket llamado "cocina"
+    background_tasks.add_task(manager.broadcast, mensaje_cocina, "cocina")
 
     return nueva_orden
+
+
+# --- ENDPOINTS PARA COCINA ---
+
+@app.get("/ordenes/pendientes", response_model=List[schemas.OrdenPendienteResponse])
+def obtener_ordenes_pendientes(
+    restaurante_id: Optional[uuid.UUID] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Devuelve las comandas en estado 'pendiente' para la cocina.
+    Opcionalmente se puede filtrar por restaurante_id.
+    """
+    query = db.query(models.OrdenItem).join(models.SesionMesa, models.OrdenItem.sesion_id == models.SesionMesa.id)
+    query = query.filter(models.OrdenItem.estado == "pendiente")
+
+    if restaurante_id:
+        query = query.filter(models.SesionMesa.restaurante_id == restaurante_id)
+
+    ordenes = query.order_by(models.OrdenItem.creado_en.asc()).all()
+
+    items_cache = {}
+    resultado = []
+    for o in ordenes:
+        nombre_item = o.nombre_item
+        if not nombre_item:
+            if o.item_menu_id not in items_cache:
+                try:
+                    with httpx.Client(timeout=1.0) as client:
+                        resp = client.get(f"http://127.0.0.1:8000/items/{o.item_menu_id}")
+                        if resp.status_code == 200:
+                            items_cache[o.item_menu_id] = resp.json().get("nombre")
+                except Exception:
+                    items_cache[o.item_menu_id] = None
+            nombre_item = items_cache.get(o.item_menu_id) or f"Platillo #{str(o.item_menu_id)[:8]}"
+            o.nombre_item = nombre_item
+            db.commit()
+
+        mesa_nombre = o.sesion.numero_mesa if o.sesion else "N/A"
+
+        resultado.append(schemas.OrdenPendienteResponse(
+            id=o.id,
+            sesion_id=o.sesion_id,
+            mesa_id=mesa_nombre,
+            numero_mesa=mesa_nombre,
+            usuario_id=o.usuario_id,
+            nombre_usuario=o.nombre_usuario or "Invitado",
+            item_menu_id=o.item_menu_id,
+            nombre_item=nombre_item,
+            cantidad=o.cantidad,
+            notas=o.notas,
+            estado=o.estado,
+            pagado=o.pagado,
+            creado_en=o.creado_en
+        ))
+
+    return resultado
+
+
+ESTADOS_VALIDOS = {"pendiente", "preparando", "lista", "entregada"}
+
+@app.put("/ordenes/{orden_id}/estado")
+def actualizar_estado_orden(
+    orden_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    estado_nuevo: Optional[str] = None,
+    body: Optional[schemas.EstadoUpdate] = None,
+    db: Session = Depends(get_db)
+):
+    nuevo = estado_nuevo
+    if not nuevo and body:
+        nuevo = body.estado_nuevo or body.estado
+
+    if not nuevo:
+        raise HTTPException(
+            status_code=400,
+            detail="Se requiere el parámetro 'estado_nuevo' en la query o en el body"
+        )
+
+    nuevo = nuevo.strip().lower()
+    if nuevo not in ESTADOS_VALIDOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Estado inválido '{nuevo}'. Estados permitidos: {', '.join(sorted(ESTADOS_VALIDOS))}"
+        )
+
+    orden = db.query(models.OrdenItem).filter(models.OrdenItem.id == orden_id).first()
+    if not orden:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+
+    orden.estado = nuevo
+    db.commit()
+    db.refresh(orden)
+
+    # Notificar a la mesa vía WebSocket sobre el cambio de estado
+    background_tasks.add_task(
+        manager.broadcast,
+        json.dumps({
+            "accion": "estado_orden_actualizado",
+            "orden_id": str(orden.id),
+            "estado": nuevo
+        }),
+        str(orden.sesion_id)
+    )
+
+    return {
+        "mensaje": f"Estado de la orden actualizado a '{nuevo}'",
+        "orden_id": str(orden.id),
+        "estado": orden.estado
+    }
+
     
 @app.get("/sesion/{sesion_id}/estado")
 def ver_estado_mesa(sesion_id: uuid.UUID, db: Session = Depends(get_db)):

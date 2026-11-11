@@ -8,6 +8,7 @@ import Cuenta from './components/Cuenta';
 import CerrarPagar from './components/CerrarPagar';
 import PuertaFisica from './components/PuertaFisica';
 import TicketSalida from './components/TicketSalida';
+import VistaCocinero from './components/VistaCocinero';
 
 
 // Un componente temporal para cuando el login sea exitoso
@@ -47,6 +48,9 @@ function App() {
 
         {/* Ruta para pagar la cuenta */}
         <Route path="/pagar/:id" element={<CerrarPagar />} />
+
+        <Route path="/cocinero" element={<VistaCocinero />} />
+
 
         <Route path="/local/:nombre_restaurante/id/:restaurante_id/mesa_fisica/:numero_mesa" element={<PuertaFisica />} />
 

@@ -26,6 +26,9 @@ class OrdenItemCreate(BaseModel):
     cantidad: int = 1
     # Recibimos el nombre del invitado
     nombre_usuario: Optional[str] = None 
+    nombre_item: Optional[str] = None
+    notas: Optional[str] = None
+    estado: Optional[str] = "pendiente"
 
 class OrdenItemResponse(BaseModel):
     id: uuid.UUID
@@ -35,9 +38,35 @@ class OrdenItemResponse(BaseModel):
     cantidad: int
     pagado: bool
     nombre_usuario: Optional[str] = None
+    nombre_item: Optional[str] = None
+    notas: Optional[str] = None
+    estado: str = "pendiente"
+    creado_en: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+class OrdenPendienteResponse(BaseModel):
+    id: uuid.UUID
+    sesion_id: uuid.UUID
+    mesa_id: str
+    numero_mesa: str
+    usuario_id: Optional[uuid.UUID] = None
+    nombre_usuario: Optional[str] = None
+    item_menu_id: uuid.UUID
+    nombre_item: str
+    cantidad: int
+    notas: Optional[str] = None
+    estado: str
+    pagado: bool
+    creado_en: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class EstadoUpdate(BaseModel):
+    estado: Optional[str] = None
+    estado_nuevo: Optional[str] = None
 
 class VerificarMesaFisica(BaseModel):
     restaurante_id: uuid.UUID  # Usa str si tus IDs de restaurante son UUIDs
